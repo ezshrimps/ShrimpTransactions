@@ -1,40 +1,32 @@
 import { useState, useCallback } from "react"
-import type { ExpenseConfig } from "@/app/page"
+import type { ParsedExpenses, ExpenseList } from "@/app/page"
 
 interface HistoryState {
-  configs: ExpenseConfig[]
-  currentConfigId: string | null
+  expenses: ParsedExpenses
+  expenseList: ExpenseList
+  rawInput: string
 }
 
-export function useHistory(initialConfigs: ExpenseConfig[], initialCurrentId: string | null) {
-  const [history, setHistory] = useState<HistoryState[]>([
-    {
-      configs: initialConfigs,
-      currentConfigId: initialCurrentId,
-    },
-  ])
-  const [historyIndex, setHistoryIndex] = useState(0)
+export function useHistory() {
+  const [history, setHistory] = useState<HistoryState[]>([])
+  const [historyIndex, setHistoryIndex] = useState(-1)
   const maxHistorySize = 50 // 最多保存50个历史状态
 
-  // 获取当前状态
-  const getCurrentState = useCallback((): HistoryState => {
-    return history[historyIndex]
-  }, [history, historyIndex])
-
-  // 添加新状态到历史
+  // 添加新状态到历史（只保存当前账单的支出数据）
   const pushState = useCallback(
-    (newConfigs: ExpenseConfig[], newCurrentConfigId: string | null) => {
+    (expenses: ParsedExpenses, expenseList: ExpenseList, rawInput: string) => {
       const newState: HistoryState = {
-        configs: JSON.parse(JSON.stringify(newConfigs)), // 深拷贝
-        currentConfigId: newCurrentConfigId,
+        expenses: JSON.parse(JSON.stringify(expenses)), // 深拷贝
+        expenseList: JSON.parse(JSON.stringify(expenseList)), // 深拷贝
+        rawInput: rawInput,
       }
 
       // 如果新状态与当前状态相同，不添加
       if (historyIndex >= 0 && historyIndex < history.length) {
         const current = history[historyIndex]
         if (
-          JSON.stringify(current.configs) === JSON.stringify(newState.configs) &&
-          current.currentConfigId === newState.currentConfigId
+          JSON.stringify(current.expenses) === JSON.stringify(newState.expenses) &&
+          JSON.stringify(current.expenseList) === JSON.stringify(newState.expenseList)
         ) {
           return
         }
@@ -48,13 +40,20 @@ export function useHistory(initialConfigs: ExpenseConfig[], initialCurrentId: st
       if (newHistory.length > maxHistorySize) {
         newHistory.shift()
         setHistoryIndex((prev) => prev - 1)
+      } else {
+        setHistoryIndex(newHistory.length - 1)
       }
 
       setHistory(newHistory)
-      setHistoryIndex(newHistory.length - 1)
     },
-    [history, historyIndex, maxHistorySize],
+    [history, historyIndex],
   )
+
+  // 清空历史（当切换账单时）
+  const clearHistory = useCallback(() => {
+    setHistory([])
+    setHistoryIndex(-1)
+  }, [])
 
   // 撤销
   const undo = useCallback((): HistoryState | null => {
@@ -83,10 +82,10 @@ export function useHistory(initialConfigs: ExpenseConfig[], initialCurrentId: st
   const canRedo = historyIndex < history.length - 1
 
   return {
-    getCurrentState,
     pushState,
     undo,
     redo,
+    clearHistory,
     canUndo,
     canRedo,
   }

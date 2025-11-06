@@ -255,13 +255,14 @@ export function ExpenseChartInteractive({
         .domain([0, yDomainMax])
         .range([height, topEmptySpacePixels])
     } else {
-      // 预览模式：高度按价格比例
-      const fullStackData = FIXED_CATEGORIES.map((category) => {
+      // 预览模式：按线性金额堆叠与线性Y轴
+      const previewStats = FIXED_CATEGORIES.map((category) => {
         const entries = expenses[category] || []
-        const totals = entries.reduce((acc, entry) => acc + entry.amount, 0)
-        return { category, total: totals }
+        const totalAmount = entries.reduce((acc, entry) => acc + entry.amount, 0)
+        return { category, totalAmount }
       })
-      yDomainMax = (d3.max as any)(fullStackData, (d: any) => d.total) || 0
+      const maxTotal = (d3.max as any)(previewStats, (d: any) => d.totalAmount) || 0
+      yDomainMax = maxTotal
       const yPadding = yDomainMax < 100 ? 0.05 : 0.1
       yScale = (d3.scaleLinear as any)()
         .domain([0, yDomainMax * (1 + yPadding)])
@@ -297,7 +298,7 @@ export function ExpenseChartInteractive({
           const hue = 120 * (1 - normalizedAmount)
           color = `hsl(${hue}, 70%, 50%)`
         } else {
-          // 预览模式：按价格比例
+          // 预览模式：按线性金额比例
           y1 = y0 + entry.amount
           segmentWidth = xScale.bandwidth()
           // 使用固定配色循环
@@ -370,7 +371,7 @@ export function ExpenseChartInteractive({
         return Math.max(0, y0Scaled - y1Scaled)
       })
       .attr("fill", (d) => d.color)
-      .attr("rx", 6) // 更圆润的边角
+      .attr("rx", displayMode === "preview" ? 0 : 6)
       .attr("stroke", "rgba(255,255,255,0.3)")
       .attr("stroke-width", 1.5)
       .style("transition", "all 0.2s ease")
@@ -493,7 +494,7 @@ export function ExpenseChartInteractive({
         .attr("font-weight", "600")
         .attr("pointer-events", "none")
         .style("text-shadow", "0 1px 2px rgba(255,255,255,0.8)")
-        .text((d) => `¥${d.entry.amount.toFixed(0)}`)
+        .text((d) => `$${d.entry.amount.toFixed(0)}`)
     }
 
     // 拖拽功能
@@ -769,11 +770,12 @@ export function ExpenseChartInteractive({
       .attr("transform", `translate(0,${height})`)
       .call(xAxis)
       .selectAll("text")
-      .attr("transform", "rotate(-45)")
-      .style("text-anchor", "end")
-      .attr("fill", "#64748B")
-      .attr("font-size", "12px")
-      .attr("font-weight", "500")
+      .attr("transform", null)
+      .style("text-anchor", "middle")
+      .attr("dy", "1.25em")
+      .attr("fill", "#334155")
+      .attr("font-size", "14px")
+      .attr("font-weight", "700")
     
     // 对于没有数据的类别，使用灰色显示
     xAxisGroup.each(function (d: any) {
@@ -797,14 +799,15 @@ export function ExpenseChartInteractive({
 
     // Y轴 - 只在预览模式下显示价格
     if (displayMode === "preview") {
-      const yAxis = (d3.axisLeft as any)(yScale).tickFormat((d: number) => `¥${d}`)
+      // 线性金额刻度
+      const yAxis = (d3.axisLeft as any)(yScale).tickFormat((t: number) => `$${t}`)
       g.append("g")
         .attr("class", "y-axis")
         .call(yAxis)
         .selectAll("text")
-        .attr("fill", "#64748B")
-        .attr("font-size", "11px")
-        .attr("font-weight", "500")
+        .attr("fill", "#334155")
+        .attr("font-size", "12px")
+        .attr("font-weight", "600")
       
       // Y轴线
       g.select(".y-axis")
@@ -816,6 +819,32 @@ export function ExpenseChartInteractive({
         .selectAll("line")
         .attr("stroke", "#E2E8F0")
         .attr("stroke-width", 1)
+      
+      // 在每个类别顶部绘制虚线并延伸到Y轴，同时标注该类别总支出（$）
+      const categoryTopInfo = FIXED_CATEGORIES.map((category) => {
+        const entries = expenses[category] || []
+        const totalAmount = entries.reduce((acc, e) => acc + e.amount, 0)
+        return {
+          category,
+          y: yScale(totalAmount),
+          totalAmount,
+          xStart: xScale(category) || 0,
+        }
+      })
+
+      const topLabels = g.selectAll(".cat-top-label").data(categoryTopInfo)
+      topLabels
+        .enter()
+        .append("text")
+        .attr("class", "cat-top-label")
+        .attr("x", (d) => (d.xStart + (xScale.bandwidth as any)() / 2))
+        .attr("y", (d) => d.y - 6)
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "baseline")
+        .attr("fill", "#334155")
+        .attr("font-size", "12px")
+        .attr("font-weight", "700")
+        .text((d) => `$${Math.round(d.totalAmount)}`)
     } else {
       // 编辑模式：Y轴不显示价格标签
       const yAxis = (d3.axisLeft as any)(yScale).tickFormat(() => "")
@@ -1058,7 +1087,7 @@ export function ExpenseChartInteractive({
           }}
         >
           <div className="font-semibold mb-1 text-base">
-            ¥{hoveredSegment.entry.amount.toFixed(2)}
+            ${hoveredSegment.entry.amount.toFixed(2)}
           </div>
           {hoveredSegment.entry.description && (
             <div className="text-slate-300 text-xs mb-1">
@@ -1102,7 +1131,7 @@ export function ExpenseChartInteractive({
               className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               onClick={() => {
                 if (onDeleteEntry && contextMenu) {
-                  if (confirm(`确定要删除这笔支出吗？\n金额：¥${contextMenu.segment.entry.amount.toFixed(2)}${contextMenu.segment.entry.description ? `\n名称：${contextMenu.segment.entry.description}` : ""}`)) {
+                  if (confirm(`确定要删除这笔支出吗？\n金额：$${contextMenu.segment.entry.amount.toFixed(2)}${contextMenu.segment.entry.description ? `\n名称：${contextMenu.segment.entry.description}` : ""}`)) {
                     onDeleteEntry(contextMenu.segment.entry.id)
                     setContextMenu(null)
                   }
@@ -1152,27 +1181,27 @@ export function ExpenseChartInteractive({
               </div>
               <div className="flex-1 flex justify-between text-xs text-slate-600 dark:text-slate-400">
                 <div className="flex flex-col items-center">
-                  <div className="font-medium">¥{colorLegendData.min.toFixed(2)}</div>
+                  <div className="font-medium">${colorLegendData.min.toFixed(2)}</div>
                   <div className="text-[10px] text-slate-400">最小</div>
                 </div>
                 <div className="flex flex-col items-center">
-                  <div className="font-medium">¥{colorLegendData.p25.toFixed(2)}</div>
+                  <div className="font-medium">${colorLegendData.p25.toFixed(2)}</div>
                   <div className="text-[10px] text-slate-400">25%</div>
                 </div>
                 <div className="flex flex-col items-center">
-                  <div className="font-medium">¥{colorLegendData.p50.toFixed(2)}</div>
+                  <div className="font-medium">${colorLegendData.p50.toFixed(2)}</div>
                   <div className="text-[10px] text-slate-400">中位数</div>
                 </div>
                 <div className="flex flex-col items-center">
-                  <div className="font-medium">¥{colorLegendData.p75.toFixed(2)}</div>
+                  <div className="font-medium">${colorLegendData.p75.toFixed(2)}</div>
                   <div className="text-[10px] text-slate-400">75%</div>
                 </div>
                 <div className="flex flex-col items-center">
-                  <div className="font-medium">¥{colorLegendData.p90.toFixed(2)}</div>
+                  <div className="font-medium">${colorLegendData.p90.toFixed(2)}</div>
                   <div className="text-[10px] text-slate-400">90%</div>
                 </div>
                 <div className="flex flex-col items-center">
-                  <div className="font-medium">¥{colorLegendData.max.toFixed(2)}</div>
+                  <div className="font-medium">${colorLegendData.max.toFixed(2)}</div>
                   <div className="text-[10px] text-slate-400">最大</div>
                 </div>
               </div>

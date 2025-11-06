@@ -67,7 +67,7 @@ export function ExpenseChart({ expenses }: ExpenseChartProps) {
               borderRadius: "0.5rem",
             }}
             labelStyle={{ color: "var(--foreground)" }}
-            formatter={(value) => `¥${Number(value).toFixed(2)}`}
+            formatter={(value) => `$${Number(value).toFixed(2)}`}
           />
           {stackKeys.map((key, idx) => (
             <Bar
@@ -99,7 +99,7 @@ export function ExpenseChart({ expenses }: ExpenseChartProps) {
               />
               <span className="text-sm text-slate-700 dark:text-slate-300">
                 {entry.description || `${category} #${idx + 1}`}
-                <span className="font-semibold ml-1">¥{entry.amount}</span>
+                <span className="font-semibold ml-1">${entry.amount}</span>
               </span>
             </div>
           )),

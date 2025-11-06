@@ -17,7 +17,7 @@ export function ExpenseList({ expenses, onDeleteEntry }: ExpenseListProps) {
           <div className="flex items-center gap-2">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{category}</h3>
             <span className="text-sm bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded">
-              ¥{entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}
+              ${entries.reduce((sum, e) => sum + e.amount, 0).toFixed(2)}
             </span>
           </div>
           <div className="space-y-2 ml-4">
@@ -30,7 +30,7 @@ export function ExpenseList({ expenses, onDeleteEntry }: ExpenseListProps) {
                   <p className="text-sm font-medium text-slate-900 dark:text-white">
                     {entry.description || `支出 #${idx + 1}`}
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">¥{entry.amount.toFixed(2)}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">${entry.amount.toFixed(2)}</p>
                 </div>
                 <Button
                   variant="ghost"
@@ -51,7 +51,7 @@ export function ExpenseList({ expenses, onDeleteEntry }: ExpenseListProps) {
         <div className="flex justify-between items-center">
           <span className="text-lg font-semibold text-slate-900 dark:text-white">总支出</span>
           <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-            ¥
+            $
             {Object.values(expenses)
               .flat()
               .reduce((sum, e) => sum + e.amount, 0)

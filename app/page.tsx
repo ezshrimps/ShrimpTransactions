@@ -61,11 +61,11 @@ export default function Home() {
   const [editingExpenseDescription, setEditingExpenseDescription] = useState<string>("")
   const [editingExpenseAmount, setEditingExpenseAmount] = useState<number>(0)
 
-  // 历史管理
-  const history = useHistory(configs, currentConfigId)
+  // 历史管理（只记录当前账单内的支出项操作）
+  const history = useHistory()
   const isHistoryAction = useRef(false) // 标记是否正在执行历史操作，避免触发新的历史记录
 
-  const currentConfig = configs.find((c) => c.id === currentConfigId)
+  const currentConfig = configs?.find((c) => c.id === currentConfigId)
 
   // 加载账单列表
   useEffect(() => {
@@ -84,10 +84,8 @@ export default function Home() {
           }
         })
         setConfigs(billsWithLists)
-        // 初始化历史记录（延迟执行，确保状态已更新）
-        setTimeout(() => {
-          history.pushState(billsWithLists, currentConfigId)
-        }, 0)
+        // 清空历史记录（切换账单时）
+        history.clearHistory()
       } catch (error) {
         console.error("Failed to load bills:", error)
         alert("加载账单列表失败，请刷新页面重试")
@@ -98,17 +96,26 @@ export default function Home() {
     loadBills()
   }, [])
 
-  // 快捷键支持
+  // 快捷键支持（只影响当前账单内的支出项操作）
   useKeyboardShortcuts([
     {
       key: "z",
       ctrl: true,
       handler: () => {
+        // 检查 configs 和 currentConfig 是否存在
+        if (!configs || configs.length === 0 || !currentConfigId || !currentConfig) return
+        
         const state = history.undo()
         if (state) {
           isHistoryAction.current = true
-          setConfigs(state.configs)
-          setCurrentConfigId(state.currentConfigId)
+          // 只更新当前账单的数据，不改变 currentConfigId
+          const updatedConfig = {
+            ...currentConfig,
+            expenses: state.expenses,
+            expenseList: state.expenseList,
+            rawInput: state.rawInput,
+          }
+          setConfigs(configs.map((c) => (c.id === currentConfigId ? updatedConfig : c)))
           setTimeout(() => {
             isHistoryAction.current = false
           }, 0)
@@ -119,11 +126,20 @@ export default function Home() {
       key: "y",
       ctrl: true,
       handler: () => {
+        // 检查 configs 和 currentConfig 是否存在
+        if (!configs || configs.length === 0 || !currentConfigId || !currentConfig) return
+        
         const state = history.redo()
         if (state) {
           isHistoryAction.current = true
-          setConfigs(state.configs)
-          setCurrentConfigId(state.currentConfigId)
+          // 只更新当前账单的数据，不改变 currentConfigId
+          const updatedConfig = {
+            ...currentConfig,
+            expenses: state.expenses,
+            expenseList: state.expenseList,
+            rawInput: state.rawInput,
+          }
+          setConfigs(configs.map((c) => (c.id === currentConfigId ? updatedConfig : c)))
           setTimeout(() => {
             isHistoryAction.current = false
           }, 0)
@@ -135,12 +151,21 @@ export default function Home() {
       ctrl: true,
       shift: true,
       handler: () => {
+        // 检查 configs 和 currentConfig 是否存在
+        if (!configs || configs.length === 0 || !currentConfigId || !currentConfig) return
+        
         // Ctrl+Shift+Z 也是重做
         const state = history.redo()
         if (state) {
           isHistoryAction.current = true
-          setConfigs(state.configs)
-          setCurrentConfigId(state.currentConfigId)
+          // 只更新当前账单的数据，不改变 currentConfigId
+          const updatedConfig = {
+            ...currentConfig,
+            expenses: state.expenses,
+            expenseList: state.expenseList,
+            rawInput: state.rawInput,
+          }
+          setConfigs(configs.map((c) => (c.id === currentConfigId ? updatedConfig : c)))
           setTimeout(() => {
             isHistoryAction.current = false
           }, 0)
@@ -164,6 +189,8 @@ export default function Home() {
       }
       setConfigs([...configs, newConfig])
       setCurrentConfigId(newConfig.id)
+      // 创建新账单后清空历史记录
+      history.clearHistory()
     } catch (error) {
       console.error("Failed to create bill:", error)
       alert("创建账单失败，请重试")
@@ -194,6 +221,8 @@ export default function Home() {
       }
       setConfigs([...configs, newConfig])
       setCurrentConfigId(newConfig.id)
+      // 导入账单后清空历史记录
+      history.clearHistory()
     } catch (error) {
       console.error("Failed to import bill:", error)
       alert("导入账单失败，请重试")
@@ -202,6 +231,8 @@ export default function Home() {
 
   const handleSelectConfig = (configId: string) => {
     setCurrentConfigId(configId)
+    // 切换账单时清空历史记录
+    history.clearHistory()
   }
 
   const handleEditConfig = (configId: string) => {
@@ -210,11 +241,6 @@ export default function Home() {
 
   const handleSaveEdit = async (configId: string, name: string, rawInput: string, expenses: ParsedExpenses) => {
     try {
-      // 保存历史状态
-      if (!isHistoryAction.current) {
-        history.pushState(configs, currentConfigId)
-      }
-
       await updateBill(configId, name, rawInput)
       
       const expensesWithIds = addIdsToParsed(expenses)
@@ -231,14 +257,10 @@ export default function Home() {
       setConfigs(newConfigs)
       setEditingConfigId(null)
       
-      // 如果正在编辑的是当前选中的账单，更新显示
+      // 如果正在编辑的是当前选中的账单，更新显示并清空历史记录（因为账单内容完全改变了）
       if (currentConfigId === configId) {
         setCurrentConfigId(configId)
-      }
-
-      // 添加到历史（如果不在历史操作中）
-      if (!isHistoryAction.current) {
-        history.pushState(newConfigs, currentConfigId === configId ? configId : currentConfigId)
+        history.clearHistory()
       }
     } catch (error) {
       console.error("Failed to update bill:", error)
@@ -299,9 +321,9 @@ export default function Home() {
   const handleDeleteEntry = async (id: string) => {
     if (!currentConfig || !currentConfig.expenseList) return
 
-    // 保存历史状态
+    // 保存历史状态（只保存当前账单的支出数据）
     if (!isHistoryAction.current) {
-      history.pushState(configs, currentConfigId)
+      history.pushState(currentConfig.expenses, currentConfig.expenseList, currentConfig.rawInput)
     }
 
     const updatedEntries = currentConfig.expenseList.entries.filter((e) => e.id !== id)
@@ -331,7 +353,7 @@ export default function Home() {
       
       // 添加到历史（如果不在历史操作中）
       if (!isHistoryAction.current) {
-        history.pushState(newConfigs, currentConfigId)
+        history.pushState(updatedExpenses, updatedExpenseList, rawInput)
       }
     } catch (error) {
       console.error("Failed to delete entry:", error)
@@ -356,9 +378,9 @@ export default function Home() {
   const handleConfirmEditEntry = async (entryId: string, description: string, amount: number) => {
     if (!currentConfig || !currentConfig.expenseList) return
 
-    // 保存历史状态
+    // 保存历史状态（只保存当前账单的支出数据）
     if (!isHistoryAction.current) {
-      history.pushState(configs, currentConfigId)
+      history.pushState(currentConfig.expenses, currentConfig.expenseList, currentConfig.rawInput)
     }
 
     // 更新支出项
@@ -393,7 +415,7 @@ export default function Home() {
 
       // 添加到历史（如果不在历史操作中）
       if (!isHistoryAction.current) {
-        history.pushState(newConfigs, currentConfigId)
+        history.pushState(updatedExpenses, updatedExpenseList, rawInput)
       }
     } catch (error) {
       console.error("Failed to edit entry:", error)
@@ -404,9 +426,9 @@ export default function Home() {
   const handleConfirmCreateEntry = async (category: string, description: string, amount: number) => {
     if (!currentConfig || !currentConfig.expenseList) return
 
-    // 保存历史状态
+    // 保存历史状态（只保存当前账单的支出数据）
     if (!isHistoryAction.current) {
-      history.pushState(configs, currentConfigId)
+      history.pushState(currentConfig.expenses, currentConfig.expenseList, currentConfig.rawInput)
     }
 
     // 生成新支出项的ID
@@ -447,7 +469,7 @@ export default function Home() {
 
       // 添加到历史（如果不在历史操作中）
       if (!isHistoryAction.current) {
-        history.pushState(newConfigs, currentConfigId)
+        history.pushState(updatedExpenses, updatedExpenseList, rawInput)
       }
     } catch (error) {
       console.error("Failed to create entry:", error)
@@ -459,9 +481,9 @@ export default function Home() {
   const handleMoveEntry = async (id: string, newCategory: string) => {
     if (!currentConfig || !currentConfig.expenseList) return
 
-    // 保存历史状态
+    // 保存历史状态（只保存当前账单的支出数据）
     if (!isHistoryAction.current) {
-      history.pushState(configs, currentConfigId)
+      history.pushState(currentConfig.expenses, currentConfig.expenseList, currentConfig.rawInput)
     }
 
     const updatedEntries = currentConfig.expenseList.entries.map((entry) =>
@@ -494,7 +516,7 @@ export default function Home() {
       
       // 添加到历史（如果不在历史操作中）
       if (!isHistoryAction.current) {
-        history.pushState(newConfigs, currentConfigId)
+        history.pushState(updatedExpenses, updatedExpenseList, rawInput)
       }
     } catch (error) {
       console.error("Failed to move entry:", error)

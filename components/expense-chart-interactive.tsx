@@ -23,8 +23,19 @@ const FIXED_COLORS = [
   "#7788A2",
 ]
 
-// 固定类别顺序
-const FIXED_CATEGORIES = ["超市", "购物", "车", "房", "餐饮", "娱乐", "订阅", "其他"]
+// 类别改为动态：基于当前数据（按出现顺序）
+
+// 类别前缀表情符号
+const CATEGORY_EMOJI: Record<string, string> = {
+  "超市": "🛒",
+  "购物": "🛍️",
+  "车": "🚗",
+  "房": "🏠",
+  "餐饮": "🍽️",
+  "娱乐": "🎮",
+  "订阅": "🧾",
+  "其他": "📌",
+}
 
 interface SegmentData {
   entry: ExpenseEntry
@@ -67,11 +78,7 @@ export function ExpenseChartInteractive({
     value: number
   } | null>(null)
   // 每类月预算（仅用于预览模式展示与参考），持久化 localStorage
-  const [budgets, setBudgets] = useState<Record<string, number>>(() => {
-    const init: Record<string, number> = {}
-    FIXED_CATEGORIES.forEach((c) => (init[c] = 0))
-    return init
-  })
+  const [budgets, setBudgets] = useState<Record<string, number>>({})
   const [colorLegendData, setColorLegendData] = useState<{
     min: number
     p25: number
@@ -88,9 +95,7 @@ export function ExpenseChartInteractive({
       const saved = typeof window !== "undefined" ? localStorage.getItem("xiami_budgets") : null
       if (saved) {
         const parsed = JSON.parse(saved)
-        const merged: Record<string, number> = {}
-        FIXED_CATEGORIES.forEach((c) => (merged[c] = Number(parsed?.[c]) || 0))
-        setBudgets(merged)
+        setBudgets(parsed || {})
       }
     } catch (_) {}
 
@@ -116,7 +121,7 @@ export function ExpenseChartInteractive({
         if (displayMode === "edit") {
           // 编辑模式：缩短高度，确保在屏幕内
           const maxEntryCount = Math.max(
-            ...FIXED_CATEGORIES.map((cat) => (expenses[cat] || []).length),
+            ...categories.map((cat) => (expenses[cat] || []).length),
             1
           )
           const fixedSegmentHeight = 25 // 缩短每个segment的高度
@@ -167,9 +172,10 @@ export function ExpenseChartInteractive({
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`)
 
-    // 准备数据 - 使用固定的类别顺序
+    // 准备数据 - 动态类别顺序
+    const categories = Object.keys(expenses)
     const allEntries: Array<{ entry: ExpenseEntry; category: string; index: number }> = []
-    FIXED_CATEGORIES.forEach((category) => {
+    categories.forEach((category) => {
       if (expenses[category]) {
         expenses[category].forEach((entry, idx) => {
           allEntries.push({ entry, category, index: idx })
@@ -181,13 +187,13 @@ export function ExpenseChartInteractive({
     // 两种模式都使用相同的padding
     const xPadding = 0.15
     const xScale = (d3.scaleBand as any)()
-      .domain(FIXED_CATEGORIES)
+      .domain(categories)
       .range([0, width])
       .padding(xPadding)
 
     // 计算所有支出金额
     const allAmounts: number[] = []
-    FIXED_CATEGORIES.forEach((cat) => {
+    categories.forEach((cat) => {
       if (expenses[cat]) {
         expenses[cat].forEach((entry) => {
           allAmounts.push(entry.amount)
@@ -255,7 +261,7 @@ export function ExpenseChartInteractive({
       // 编辑模式：高度固定，缩短每个segment的高度
       // 计算每个类别中的最大支出数量，用于确定固定高度
       const maxEntryCount = Math.max(
-        ...FIXED_CATEGORIES.map((cat) => (expenses[cat] || []).length),
+        ...categories.map((cat) => (expenses[cat] || []).length),
         1
       )
       // 每个segment固定高度，缩短高度
@@ -280,7 +286,7 @@ export function ExpenseChartInteractive({
         .range([height, topEmptySpacePixels])
     } else {
       // 预览模式：按线性金额堆叠与线性Y轴
-      const previewStats = FIXED_CATEGORIES.map((category) => {
+      const previewStats = categories.map((category) => {
         const entries = expenses[category] || []
         const totalAmount = entries.reduce((acc, entry) => acc + entry.amount, 0)
         return { category, totalAmount }
@@ -294,9 +300,9 @@ export function ExpenseChartInteractive({
         .nice()
     }
 
-    // 创建segments - 按照固定类别顺序
+    // 创建segments - 按照动态类别
     const segments: SegmentData[] = []
-    FIXED_CATEGORIES.forEach((category) => {
+    categories.forEach((category) => {
       const entries = expenses[category] || []
       // 编辑模式下，segments从domain的0开始（对应像素的topEmptySpacePixels位置）
       // 这样segments不会覆盖顶部空白区域
@@ -560,7 +566,7 @@ export function ExpenseChartInteractive({
         setMousePos({ x: gx, y: gy })
 
         // 高亮目标类别 - 使用固定类别列表
-        const targetCategory = FIXED_CATEGORIES.find((cat) => {
+        const targetCategory = Object.keys(expenses).find((cat) => {
           const xPos = xScale(cat) || 0
           const xEnd = xPos + (xScale.bandwidth as any)()
           return gx >= xPos && gx <= xEnd
@@ -591,7 +597,7 @@ export function ExpenseChartInteractive({
         const gx = mx - margin.left
 
         // 确定目标类别 - 使用固定类别列表
-        const targetCategory = FIXED_CATEGORIES.find((cat) => {
+        const targetCategory = Object.keys(expenses).find((cat) => {
           const xPos = xScale(cat) || 0
           const xEnd = xPos + (xScale.bandwidth as any)()
           return gx >= xPos && gx <= xEnd
@@ -619,7 +625,7 @@ export function ExpenseChartInteractive({
     // 为每个类别创建从顶部到segments顶部的整个空白区域，都可以点击添加
     if (displayMode === "edit" && onCreateEntry) {
       // 为每个类别计算空白区域
-      const categoryEmptyAreas = FIXED_CATEGORIES.map((category) => {
+      const categoryEmptyAreas = Object.keys(expenses).map((category) => {
         // 找到当前类别最顶部的segment位置
         const categorySegments = segments.filter((s) => s.category === category)
         let emptyAreaTop = 0 // 类别顶部（像素坐标0）
@@ -798,8 +804,9 @@ export function ExpenseChartInteractive({
       .style("text-anchor", "middle")
       .attr("dy", "1.25em")
       .attr("fill", "#334155")
-      .attr("font-size", "14px")
-      .attr("font-weight", "700")
+      .attr("font-size", "16px")
+      .attr("font-weight", "800")
+      .text((d: any) => `${d as string}`)
     
     // 对于没有数据的类别，使用灰色显示
     xAxisGroup.each(function (d: any) {
@@ -845,7 +852,7 @@ export function ExpenseChartInteractive({
         .attr("stroke-width", 1)
       
       // 顶部右侧显示所有消费总金额
-      const totalAll = FIXED_CATEGORIES.reduce((sum, category) => {
+      const totalAll = categories.reduce((sum, category) => {
         const entries = expenses[category] || []
         const subtotal = entries.reduce((acc, e) => acc + e.amount, 0)
         return sum + subtotal
@@ -861,7 +868,7 @@ export function ExpenseChartInteractive({
         .text(`总金额 $${Math.round(totalAll)}`)
 
       // 预算虚线（每类）与顶部总额颜色（按使用率）
-      const categoryStats = FIXED_CATEGORIES.map((category) => {
+      const categoryStats = categories.map((category) => {
         const entries = expenses[category] || []
         const totalAmount = entries.reduce((acc, e) => acc + e.amount, 0)
         const budget = Number(budgets[category] || 0)
@@ -983,7 +990,7 @@ export function ExpenseChartInteractive({
     const height = dimensions.height - margin.top - margin.bottom
 
     const xScale = (d3.scaleBand as any)()
-      .domain(FIXED_CATEGORIES)
+      .domain(categories)
       .range([0, width])
       .padding(0.15)
 
@@ -1015,7 +1022,7 @@ export function ExpenseChartInteractive({
     if (displayMode === "edit") {
       // 计算分位数，使用与绘制时相同的逻辑
       const allAmounts: number[] = []
-      FIXED_CATEGORIES.forEach((cat) => {
+      Object.keys(expenses).forEach((cat) => {
         if (expenses[cat]) {
           expenses[cat].forEach((entry) => {
             allAmounts.push(entry.amount)
@@ -1071,7 +1078,7 @@ export function ExpenseChartInteractive({
     let yScaleForPreview: any
     if (displayMode === "edit") {
       const maxEntryCount = Math.max(
-        ...FIXED_CATEGORIES.map((cat) => (expenses[cat] || []).length),
+        ...Object.keys(expenses).map((cat) => (expenses[cat] || []).length),
         1
       )
       const fixedSegmentHeight = 25
@@ -1080,7 +1087,7 @@ export function ExpenseChartInteractive({
         .domain([0, yDomainMax])
         .range([height, 0])
     } else {
-      const fullStackData = FIXED_CATEGORIES.map((category) => {
+      const fullStackData = Object.keys(expenses).map((category) => {
         const entries = expenses[category] || []
         const totals = entries.reduce((acc, entry) => acc + entry.amount, 0)
         return { category, total: totals }
@@ -1159,10 +1166,10 @@ export function ExpenseChartInteractive({
           </div>
           <div className="ml-auto text-xs text-slate-500 dark:text-slate-400">
             {displayMode === "edit" && (
-              <span>所有支出高度相同，颜色由金额决定（绿→红），可拖拽调整</span>
+              <span>点击空白部分可以添加，拖拽可移动分类，右键可编辑或删除</span>
             )}
             {displayMode === "preview" && (
-              <span>高度按价格比例，使用固定配色，不可拖拽</span>
+              <span>直观查看支出和预算，点击预算可编辑</span>
             )}
           </div>
         </div>

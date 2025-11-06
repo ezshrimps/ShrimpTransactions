@@ -24,7 +24,7 @@ const FIXED_COLORS = [
 ]
 
 // 固定类别顺序
-const FIXED_CATEGORIES = ["超市", "车", "房", "餐饮", "娱乐", "订阅", "其他"]
+const FIXED_CATEGORIES = ["超市", "购物", "车", "房", "餐饮", "娱乐", "订阅", "其他"]
 
 interface SegmentData {
   entry: ExpenseEntry
@@ -59,6 +59,19 @@ export function ExpenseChartInteractive({
     x: number
     y: number
   } | null>(null)
+  // 预算编辑浮层
+  const [editingBudget, setEditingBudget] = useState<{
+    category: string
+    x: number
+    y: number
+    value: number
+  } | null>(null)
+  // 每类月预算（仅用于预览模式展示与参考），持久化 localStorage
+  const [budgets, setBudgets] = useState<Record<string, number>>(() => {
+    const init: Record<string, number> = {}
+    FIXED_CATEGORIES.forEach((c) => (init[c] = 0))
+    return init
+  })
   const [colorLegendData, setColorLegendData] = useState<{
     min: number
     p25: number
@@ -70,6 +83,17 @@ export function ExpenseChartInteractive({
 
   // 计算尺寸 - 根据数据动态调整，确保宽度在屏幕内
   useEffect(() => {
+    // 加载预算（仅一次）
+    try {
+      const saved = typeof window !== "undefined" ? localStorage.getItem("xiami_budgets") : null
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        const merged: Record<string, number> = {}
+        FIXED_CATEGORIES.forEach((c) => (merged[c] = Number(parsed?.[c]) || 0))
+        setBudgets(merged)
+      }
+    } catch (_) {}
+
     const updateDimensions = () => {
       if (containerRef.current && typeof window !== "undefined") {
         const rect = containerRef.current.getBoundingClientRect()
@@ -133,7 +157,7 @@ export function ExpenseChartInteractive({
     const svg = d3.select(svgRef.current)
     svg.selectAll("*").remove()
 
-    const margin = { top: 40, right: 40, bottom: 120, left: 80 }
+    const margin = { top: 40, right: 40, bottom: displayMode === "preview" ? 150 : 120, left: 80 }
     const width = dimensions.width - margin.left - margin.right
     const height = dimensions.height - margin.top - margin.bottom
 
@@ -820,17 +844,64 @@ export function ExpenseChartInteractive({
         .attr("stroke", "#E2E8F0")
         .attr("stroke-width", 1)
       
-      // 在每个类别顶部绘制虚线并延伸到Y轴，同时标注该类别总支出（$）
-      const categoryTopInfo = FIXED_CATEGORIES.map((category) => {
+      // 顶部右侧显示所有消费总金额
+      const totalAll = FIXED_CATEGORIES.reduce((sum, category) => {
+        const entries = expenses[category] || []
+        const subtotal = entries.reduce((acc, e) => acc + e.amount, 0)
+        return sum + subtotal
+      }, 0)
+      g.append("text")
+        .attr("class", "total-all-label")
+        .attr("x", width)
+        .attr("y", -10)
+        .attr("text-anchor", "end")
+        .attr("fill", "#334155")
+        .attr("font-size", "13px")
+        .attr("font-weight", "700")
+        .text(`总金额 $${Math.round(totalAll)}`)
+
+      // 预算虚线（每类）与顶部总额颜色（按使用率）
+      const categoryStats = FIXED_CATEGORIES.map((category) => {
         const entries = expenses[category] || []
         const totalAmount = entries.reduce((acc, e) => acc + e.amount, 0)
-        return {
-          category,
-          y: yScale(totalAmount),
-          totalAmount,
-          xStart: xScale(category) || 0,
-        }
+        const budget = Number(budgets[category] || 0)
+        const utilization = budget > 0 ? totalAmount / budget : 0
+        return { category, totalAmount, budget, utilization }
       })
+
+      // 先画预算虚线（限制在所属类目的宽度内，不延长到左边）
+      const budgetLines = g.selectAll(".budget-line").data(categoryStats)
+      budgetLines
+        .enter()
+        .append("line")
+        .attr("class", "budget-line")
+        .attr("x1", (d) => (xScale(d.category) || 0))
+        .attr("x2", (d) => (xScale(d.category) || 0) + (xScale.bandwidth as any)())
+        .attr("y1", (d) => yScale(Math.max(0, d.budget)))
+        .attr("y2", (d) => yScale(Math.max(0, d.budget)))
+        .attr("stroke", "#94A3B8")
+        .attr("stroke-width", 1)
+        .attr("stroke-dasharray", "4,4")
+        .style("opacity", (d) => (d.budget > 0 ? 1 : 0))
+
+      // 顶部每类总额标签颜色（根据使用率）
+      function getUtilColor(u: number, hasBudget: boolean): string {
+        if (!hasBudget) return "#334155" // 无预算，默认深灰
+        if (u > 1.0) return "#DC2626" // 超支 红
+        if (u >= 0.95) return "#EA580C" // 临界 橙
+        if (u >= 0.75) return "#CA8A04" // 接近 黄
+        return "#16A34A" // 充裕 绿
+      }
+      
+      // 在每个类别顶部绘制虚线并延伸到Y轴，同时标注该类别总支出（$）
+      const categoryTopInfo = categoryStats.map((s) => ({
+        category: s.category,
+        y: yScale(s.totalAmount),
+        totalAmount: s.totalAmount,
+        xStart: xScale(s.category) || 0,
+        utilization: s.utilization,
+        hasBudget: s.budget > 0,
+      }))
 
       const topLabels = g.selectAll(".cat-top-label").data(categoryTopInfo)
       topLabels
@@ -841,10 +912,37 @@ export function ExpenseChartInteractive({
         .attr("y", (d) => d.y - 6)
         .attr("text-anchor", "middle")
         .attr("dominant-baseline", "baseline")
-        .attr("fill", "#334155")
+        .attr("fill", (d: any) => getUtilColor(d.utilization, d.hasBudget))
         .attr("font-size", "12px")
         .attr("font-weight", "700")
         .text((d) => `$${Math.round(d.totalAmount)}`)
+
+      // 在 X 轴下方绘制预算数字，点击可编辑
+      const budgetLabels = g.selectAll(".budget-label").data(categoryStats)
+      budgetLabels
+        .enter()
+        .append("text")
+        .attr("class", "budget-label")
+        .attr("x", (d) => (xScale(d.category) || 0) + (xScale.bandwidth as any)() / 2)
+        .attr("y", height + 44)
+        .attr("text-anchor", "middle")
+        .attr("fill", "#475569")
+        .attr("font-size", "11px")
+        .attr("font-weight", "600")
+        .style("cursor", "pointer")
+        .text((d) => (d.budget > 0 ? `$${d.budget}` : "设置预算"))
+        .on("click", (event: any, d: any) => {
+          const svgRect = svg.node()?.getBoundingClientRect()
+          if (!svgRect) return
+          const cx = (xScale(d.category) || 0) + (xScale.bandwidth as any)() / 2
+          const cy = height + 44
+          setEditingBudget({
+            category: d.category,
+            x: svgRect.left + margin.left + cx,
+            y: svgRect.top + margin.top + cy,
+            value: Number(budgets[d.category] || 0),
+          })
+        })
     } else {
       // 编辑模式：Y轴不显示价格标签
       const yAxis = (d3.axisLeft as any)(yScale).tickFormat(() => "")
@@ -863,7 +961,7 @@ export function ExpenseChartInteractive({
         .attr("stroke-width", 1)
     }
 
-  }, [dimensions, expenses, onMoveEntry, onCreateEntry, displayMode])
+  }, [dimensions, expenses, onMoveEntry, onCreateEntry, displayMode, budgets])
 
   // 单独处理拖拽预览和高亮
   useEffect(() => {
@@ -1075,6 +1173,31 @@ export function ExpenseChartInteractive({
           style={{ height: dimensions.height || 600 }}
         />
       </div>
+      {/* 预算内联编辑输入框（固定定位于屏幕） */}
+      {editingBudget && (
+        <input
+          autoFocus
+          type="number"
+          min={0}
+          step={1}
+          defaultValue={editingBudget.value}
+          onBlur={(e) => {
+            const num = Number(e.target.value)
+            const valid = Number.isFinite(num) && num >= 0
+            const next = { ...budgets, [editingBudget.category]: valid ? Math.round(num) : 0 }
+            setBudgets(next)
+            try { localStorage.setItem("xiami_budgets", JSON.stringify(next)) } catch (_) {}
+            setEditingBudget(null)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === 'Escape') {
+              (e.target as HTMLInputElement).blur()
+            }
+          }}
+          className="fixed z-50 px-2 py-1 text-sm rounded border border-slate-300 shadow bg-white text-slate-800"
+          style={{ left: editingBudget.x, top: editingBudget.y, transform: 'translate(-50%, -50%)' }}
+        />
+      )}
       
       {/* 悬停Tooltip（仅在编辑模式下显示） */}
       {displayMode === "edit" && hoveredSegment && !draggedSegment && (

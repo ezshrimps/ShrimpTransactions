@@ -62,7 +62,7 @@ export function EditBillDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-[90vw]">
         <DialogHeader>
           <DialogTitle>编辑账单</DialogTitle>
           <DialogDescription>修改账单名称和支出数据</DialogDescription>
@@ -82,7 +82,7 @@ export function EditBillDialog({
               placeholder="超市: 10, 16, 54(hmart), 12&#10;房租: 600&#10;水电: 120, 165"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              className="min-h-32 font-mono text-sm"
+              className="min-h-[32rem] font-mono text-sm"
             />
           </div>
           {error && (

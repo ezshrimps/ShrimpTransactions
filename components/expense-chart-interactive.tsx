@@ -7,7 +7,8 @@ import type { ExpenseEntry, ParsedExpenses } from "@/app/page"
 interface ExpenseChartInteractiveProps {
   expenses: ParsedExpenses
   onMoveEntry?: (entryId: string, newCategory: string) => void
-  onEditEntry?: (entryId: string) => void
+  onEditEntry?: (entryId: string, description: string, amount: number) => void
+  onDeleteEntry?: (entryId: string) => void
   onCreateEntry?: (category: string) => void
 }
 
@@ -40,6 +41,7 @@ export function ExpenseChartInteractive({
   expenses,
   onMoveEntry,
   onEditEntry,
+  onDeleteEntry,
   onCreateEntry,
 }: ExpenseChartInteractiveProps) {
   const svgRef = useRef<SVGSVGElement>(null)
@@ -49,7 +51,22 @@ export function ExpenseChartInteractive({
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 }) // 鼠标当前位置（g坐标系）
   const [hoveredCategory, setHoveredCategory] = useState<string | null>(null)
-  const [displayMode, setDisplayMode] = useState<DisplayMode>("preview")
+  const [displayMode, setDisplayMode] = useState<DisplayMode>("edit")
+  const [hoveredSegment, setHoveredSegment] = useState<SegmentData | null>(null)
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 })
+  const [contextMenu, setContextMenu] = useState<{
+    segment: SegmentData
+    x: number
+    y: number
+  } | null>(null)
+  const [colorLegendData, setColorLegendData] = useState<{
+    min: number
+    p25: number
+    p50: number
+    p75: number
+    p90: number
+    max: number
+  } | null>(null)
 
   // 计算尺寸 - 根据数据动态调整，确保宽度在屏幕内
   useEffect(() => {
@@ -157,6 +174,51 @@ export function ExpenseChartInteractive({
     const minAmount = allAmounts.length > 0 ? Math.min(...allAmounts) : 0
     const maxAmount = allAmounts.length > 0 ? Math.max(...allAmounts) : 0
     
+    // 计算分位数，用于优化颜色映射曲线
+    // 让小额支出之间的颜色差异更明显
+    let colorScale: (amount: number) => number
+    if (allAmounts.length > 0) {
+      const sortedAmounts = [...allAmounts].sort((a, b) => a - b)
+      const p25 = sortedAmounts[Math.floor(sortedAmounts.length * 0.25)] || minAmount
+      const p50 = sortedAmounts[Math.floor(sortedAmounts.length * 0.5)] || minAmount
+      const p75 = sortedAmounts[Math.floor(sortedAmounts.length * 0.75)] || minAmount
+      const p90 = sortedAmounts[Math.floor(sortedAmounts.length * 0.9)] || minAmount
+      
+      // 保存图例数据（仅在编辑模式下）
+      if (displayMode === "edit") {
+        setColorLegendData({ min: minAmount, p25, p50, p75, p90, max: maxAmount })
+      } else {
+        setColorLegendData(null)
+      }
+      
+      // 使用分段映射 + 平方根缩放，让小值范围的映射更敏感
+      colorScale = (amount: number) => {
+        if (amount <= p25) {
+          // 0-25分位：映射到0-0.25，使用线性（保持敏感）
+          const t = (amount - minAmount) / (p25 - minAmount || 1)
+          return t * 0.25
+        } else if (amount <= p50) {
+          // 25-50分位：映射到0.25-0.5，使用平方根缩放
+          const t = (amount - p25) / (p50 - p25 || 1)
+          return 0.25 + Math.sqrt(t) * 0.25
+        } else if (amount <= p75) {
+          // 50-75分位：映射到0.5-0.75，使用平方根缩放
+          const t = (amount - p50) / (p75 - p50 || 1)
+          return 0.5 + Math.sqrt(t) * 0.25
+        } else if (amount <= p90) {
+          // 75-90分位：映射到0.75-0.9，使用平方根缩放
+          const t = (amount - p75) / (p90 - p75 || 1)
+          return 0.75 + Math.sqrt(t) * 0.15
+        } else {
+          // 90-100分位：映射到0.9-1.0，使用平方根缩放
+          const t = (amount - p90) / (maxAmount - p90 || 1)
+          return 0.9 + Math.sqrt(t) * 0.1
+        }
+      }
+    } else {
+      colorScale = () => 0.5
+    }
+    
     // 根据显示模式设置Y轴
     let yScale: any
     let yDomainMax = 0
@@ -228,10 +290,9 @@ export function ExpenseChartInteractive({
           segmentWidth = xScale.bandwidth()
           
           // 颜色从绿到红，根据金额计算
+          // 使用优化的非线性映射，让小金额之间的差异更明显
           // 使用HSL颜色空间：绿色(120度)到红色(0度)
-          const normalizedAmount = maxAmount > minAmount 
-            ? (entry.amount - minAmount) / (maxAmount - minAmount)
-            : 0.5
+          const normalizedAmount = colorScale(entry.amount)
           // 从绿色(120度)到红色(0度)
           const hue = 120 * (1 - normalizedAmount)
           color = `hsl(${hue}, 70%, 50%)`
@@ -321,13 +382,62 @@ export function ExpenseChartInteractive({
             .attr("opacity", 0.85)
             .attr("stroke-width", 2)
             .attr("filter", "brightness(1.1)")
+          
+          // 在编辑模式下显示tooltip
+          if (displayMode === "edit") {
+            const [mx, my] = (d3.pointer as any)(event, svg.node())
+            // 转换为屏幕坐标（考虑SVG的margin和位置）
+            const svgRect = svg.node()?.getBoundingClientRect()
+            if (svgRect) {
+              setHoveredSegment(d)
+              setTooltipPos({ 
+                x: svgRect.left + mx, 
+                y: svgRect.top + my 
+              })
+            }
+          }
         }
       })
-      .on("mouseleave", function () {
-        d3.select(this as any)
-          .attr("opacity", 1)
-          .attr("stroke-width", 1.5)
-          .attr("filter", "none")
+      .on("mousemove", function (event: any, d: SegmentData) {
+        // 更新tooltip位置（仅在编辑模式下）
+        if (displayMode === "edit" && hoveredSegment?.entry.id === d.entry.id && !draggedSegment) {
+          const [mx, my] = (d3.pointer as any)(event, svg.node())
+          const svgRect = svg.node()?.getBoundingClientRect()
+          if (svgRect) {
+            setTooltipPos({ 
+              x: svgRect.left + mx, 
+              y: svgRect.top + my 
+            })
+          }
+        }
+      })
+      .on("mouseleave", function (event: any, d: SegmentData) {
+        if (draggedSegment?.entry.id !== d.entry.id) {
+          d3.select(this as any)
+            .attr("opacity", 1)
+            .attr("stroke-width", 1.5)
+            .attr("filter", "none")
+          
+          // 清除tooltip
+          if (displayMode === "edit") {
+            setHoveredSegment(null)
+          }
+        }
+      })
+      .on("contextmenu", function (event: any, d: SegmentData) {
+        // 在编辑模式下，右键显示上下文菜单
+        if (displayMode === "edit" && !draggedSegment) {
+          event.preventDefault()
+          const [mx, my] = (d3.pointer as any)(event, svg.node())
+          const svgRect = svg.node()?.getBoundingClientRect()
+          if (svgRect) {
+            setContextMenu({
+              segment: d,
+              x: svgRect.left + mx,
+              y: svgRect.top + my,
+            })
+          }
+        }
       })
 
     // 添加文字标签 - 根据模式调整
@@ -773,23 +883,56 @@ export function ExpenseChartInteractive({
     }
 
     // 拖拽中的预览 - 跟随鼠标位置
-    const allAmounts: number[] = []
-    FIXED_CATEGORIES.forEach((cat) => {
-      if (expenses[cat]) {
-        expenses[cat].forEach((entry) => {
-          allAmounts.push(entry.amount)
-        })
+    // 使用与绘制时相同的颜色计算逻辑（分位数优化）
+    let previewColor: string
+    if (displayMode === "edit") {
+      // 计算分位数，使用与绘制时相同的逻辑
+      const allAmounts: number[] = []
+      FIXED_CATEGORIES.forEach((cat) => {
+        if (expenses[cat]) {
+          expenses[cat].forEach((entry) => {
+            allAmounts.push(entry.amount)
+          })
+        }
+      })
+      const maxAmount = allAmounts.length > 0 ? Math.max(...allAmounts) : 0
+      const minAmount = allAmounts.length > 0 ? Math.min(...allAmounts) : 0
+      
+      if (allAmounts.length > 0) {
+        const sortedAmounts = [...allAmounts].sort((a, b) => a - b)
+        const p25 = sortedAmounts[Math.floor(sortedAmounts.length * 0.25)] || minAmount
+        const p50 = sortedAmounts[Math.floor(sortedAmounts.length * 0.5)] || minAmount
+        const p75 = sortedAmounts[Math.floor(sortedAmounts.length * 0.75)] || minAmount
+        const p90 = sortedAmounts[Math.floor(sortedAmounts.length * 0.9)] || minAmount
+        
+        // 使用与绘制时相同的colorScale逻辑
+        let normalizedAmount: number
+        const amount = draggedSegment.entry.amount
+        if (amount <= p25) {
+          const t = (amount - minAmount) / (p25 - minAmount || 1)
+          normalizedAmount = t * 0.25
+        } else if (amount <= p50) {
+          const t = (amount - p25) / (p50 - p25 || 1)
+          normalizedAmount = 0.25 + Math.sqrt(t) * 0.25
+        } else if (amount <= p75) {
+          const t = (amount - p50) / (p75 - p50 || 1)
+          normalizedAmount = 0.5 + Math.sqrt(t) * 0.25
+        } else if (amount <= p90) {
+          const t = (amount - p75) / (p90 - p75 || 1)
+          normalizedAmount = 0.75 + Math.sqrt(t) * 0.15
+        } else {
+          const t = (amount - p90) / (maxAmount - p90 || 1)
+          normalizedAmount = 0.9 + Math.sqrt(t) * 0.1
+        }
+        
+        const hue = 120 * (1 - normalizedAmount)
+        previewColor = `hsl(${hue}, 70%, 50%)`
+      } else {
+        previewColor = draggedSegment.color
       }
-    })
-    const maxAmount = allAmounts.length > 0 ? Math.max(...allAmounts) : 0
-    const minAmount = allAmounts.length > 0 ? Math.min(...allAmounts) : 0
-    const normalizedAmount = maxAmount > minAmount 
-      ? (draggedSegment.entry.amount - minAmount) / (maxAmount - minAmount)
-      : 0.5
-    const hue = 120 * (1 - normalizedAmount)
-    const previewColor = displayMode === "edit" 
-      ? `hsl(${hue}, 70%, 50%)`
-      : draggedSegment.color
+    } else {
+      previewColor = draggedSegment.color
+    }
 
     const fixedSegmentHeight = 25 // 编辑模式下的固定高度
     const previewHeight = displayMode === "edit" 
@@ -851,56 +994,197 @@ export function ExpenseChartInteractive({
   }, [draggedSegment, dragOffset, mousePos, hoveredCategory, dimensions, expenses, displayMode])
 
   return (
-    <div
-      ref={containerRef}
-      className="w-full"
-      style={{
-        minHeight: 400,
-        height: dimensions.height || 600,
-      }}
-    >
-      {/* 控制面板 */}
-      <div className="mb-4 flex flex-wrap items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800">
-        <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
-          显示模式：
-        </label>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setDisplayMode("edit")}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              displayMode === "edit"
-                ? "bg-slate-700 text-white dark:bg-slate-600"
-                : "bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            }`}
-          >
-            编辑模式
-          </button>
-          <button
-            onClick={() => setDisplayMode("preview")}
-            className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
-              displayMode === "preview"
-                ? "bg-slate-700 text-white dark:bg-slate-600"
-                : "bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
-            }`}
-          >
-            预览模式
-          </button>
-        </div>
-        <div className="ml-auto text-xs text-slate-500 dark:text-slate-400">
-          {displayMode === "edit" && (
-            <span>所有支出高度相同，颜色由金额决定（绿→红），可拖拽调整</span>
-          )}
-          {displayMode === "preview" && (
-            <span>高度按价格比例，使用固定配色，不可拖拽</span>
-          )}
-        </div>
-      </div>
-
-      <svg
-        ref={svgRef}
+    <div className="w-full">
+      <div
+        ref={containerRef}
         className="w-full"
-        style={{ height: dimensions.height || 600 }}
-      />
+        style={{
+          minHeight: 400,
+          height: dimensions.height || 600,
+        }}
+      >
+        {/* 控制面板 */}
+        <div className="mb-4 flex flex-wrap items-center gap-3 p-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800">
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">
+            显示模式：
+          </label>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setDisplayMode("edit")}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                displayMode === "edit"
+                  ? "bg-slate-700 text-white dark:bg-slate-600"
+                  : "bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              }`}
+            >
+              编辑模式
+            </button>
+            <button
+              onClick={() => setDisplayMode("preview")}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                displayMode === "preview"
+                  ? "bg-slate-700 text-white dark:bg-slate-600"
+                  : "bg-white text-slate-700 hover:bg-slate-100 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
+              }`}
+            >
+              预览模式
+            </button>
+          </div>
+          <div className="ml-auto text-xs text-slate-500 dark:text-slate-400">
+            {displayMode === "edit" && (
+              <span>所有支出高度相同，颜色由金额决定（绿→红），可拖拽调整</span>
+            )}
+            {displayMode === "preview" && (
+              <span>高度按价格比例，使用固定配色，不可拖拽</span>
+            )}
+          </div>
+        </div>
+
+        <svg
+          ref={svgRef}
+          className="w-full"
+          style={{ height: dimensions.height || 600 }}
+        />
+      </div>
+      
+      {/* 悬停Tooltip（仅在编辑模式下显示） */}
+      {displayMode === "edit" && hoveredSegment && !draggedSegment && (
+        <div
+          className="fixed z-50 px-3 py-2 bg-slate-900 dark:bg-slate-800 text-white text-sm rounded-lg shadow-lg pointer-events-none border border-slate-700"
+          style={{
+            left: `${tooltipPos.x + 10}px`,
+            top: `${tooltipPos.y - 10}px`,
+            transform: 'translateY(-100%)',
+          }}
+        >
+          <div className="font-semibold mb-1 text-base">
+            ¥{hoveredSegment.entry.amount.toFixed(2)}
+          </div>
+          {hoveredSegment.entry.description && (
+            <div className="text-slate-300 text-xs mb-1">
+              {hoveredSegment.entry.description}
+            </div>
+          )}
+          <div className="text-slate-400 text-xs">
+            类别：{hoveredSegment.category}
+          </div>
+        </div>
+      )}
+      
+      {/* 右键上下文菜单 */}
+      {contextMenu && (
+        <>
+          {/* 背景遮罩，点击关闭菜单 */}
+          <div
+            className="fixed inset-0 z-40"
+            onClick={() => setContextMenu(null)}
+          />
+          {/* 菜单 */}
+          <div
+            className="fixed z-50 bg-white dark:bg-slate-800 rounded-lg shadow-lg border border-slate-200 dark:border-slate-700 py-1 min-w-[120px]"
+            style={{
+              left: `${contextMenu.x}px`,
+              top: `${contextMenu.y}px`,
+            }}
+          >
+            <button
+              className="w-full px-4 py-2 text-left text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              onClick={() => {
+                if (onEditEntry && contextMenu) {
+                  onEditEntry(contextMenu.segment.entry.id, contextMenu.segment.entry.description || "", contextMenu.segment.entry.amount)
+                  setContextMenu(null)
+                }
+              }}
+            >
+              修改
+            </button>
+            <button
+              className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+              onClick={() => {
+                if (onDeleteEntry && contextMenu) {
+                  if (confirm(`确定要删除这笔支出吗？\n金额：¥${contextMenu.segment.entry.amount.toFixed(2)}${contextMenu.segment.entry.description ? `\n名称：${contextMenu.segment.entry.description}` : ""}`)) {
+                    onDeleteEntry(contextMenu.segment.entry.id)
+                    setContextMenu(null)
+                  }
+                }
+              }}
+            >
+              删除
+            </button>
+          </div>
+        </>
+      )}
+      
+      {/* 颜色图例（仅在编辑模式下显示） */}
+      {displayMode === "edit" && colorLegendData && (
+        <div className="mt-4 p-4 bg-slate-50 dark:bg-slate-900/50 rounded-lg border border-slate-200 dark:border-slate-800">
+          <div className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">
+            颜色图例（金额区间）
+          </div>
+          <div className="flex flex-col gap-2">
+            {/* 颜色渐变条 */}
+            <div className="flex items-center gap-2">
+              <div className="text-xs text-slate-500 dark:text-slate-400 w-16 text-right">
+                颜色：
+              </div>
+              <div className="flex-1 h-6 rounded overflow-hidden flex">
+                {Array.from({ length: 20 }).map((_, i) => {
+                  const normalized = i / 19
+                  const hue = 120 * (1 - normalized)
+                  const color = `hsl(${hue}, 70%, 50%)`
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        backgroundColor: color,
+                        flex: 1,
+                      }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+            
+            {/* 分位数标记 */}
+            <div className="flex items-center gap-2 mt-2">
+              <div className="text-xs text-slate-500 dark:text-slate-400 w-16 text-right">
+                区间：
+              </div>
+              <div className="flex-1 flex justify-between text-xs text-slate-600 dark:text-slate-400">
+                <div className="flex flex-col items-center">
+                  <div className="font-medium">¥{colorLegendData.min.toFixed(2)}</div>
+                  <div className="text-[10px] text-slate-400">最小</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="font-medium">¥{colorLegendData.p25.toFixed(2)}</div>
+                  <div className="text-[10px] text-slate-400">25%</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="font-medium">¥{colorLegendData.p50.toFixed(2)}</div>
+                  <div className="text-[10px] text-slate-400">中位数</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="font-medium">¥{colorLegendData.p75.toFixed(2)}</div>
+                  <div className="text-[10px] text-slate-400">75%</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="font-medium">¥{colorLegendData.p90.toFixed(2)}</div>
+                  <div className="text-[10px] text-slate-400">90%</div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <div className="font-medium">¥{colorLegendData.max.toFixed(2)}</div>
+                  <div className="text-[10px] text-slate-400">最大</div>
+                </div>
+              </div>
+            </div>
+            
+            {/* 说明文字 */}
+            <div className="mt-3 text-xs text-slate-500 dark:text-slate-400 italic">
+              * 颜色映射使用分位数优化，让小金额之间的颜色差异更明显
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -8,6 +8,7 @@ import { CreateBillDialog } from "@/components/create-bill-dialog"
 import { ImportDialog } from "@/components/import-dialog"
 import { EditBillDialog } from "@/components/edit-bill-dialog"
 import { CreateExpenseDialog } from "@/components/create-expense-dialog"
+import { EditExpenseDialog } from "@/components/edit-expense-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { fetchBills, createBill, updateBill, deleteBill } from "@/lib/bill-api"
@@ -55,6 +56,10 @@ export default function Home() {
   const [importDialogOpen, setImportDialogOpen] = useState(false)
   const [createExpenseDialogOpen, setCreateExpenseDialogOpen] = useState(false)
   const [createExpenseCategory, setCreateExpenseCategory] = useState<string>("")
+  const [editExpenseDialogOpen, setEditExpenseDialogOpen] = useState(false)
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
+  const [editingExpenseDescription, setEditingExpenseDescription] = useState<string>("")
+  const [editingExpenseAmount, setEditingExpenseAmount] = useState<number>(0)
 
   // 历史管理
   const history = useHistory(configs, currentConfigId)
@@ -340,6 +345,62 @@ export default function Home() {
     setCreateExpenseDialogOpen(true)
   }
 
+  // 处理编辑支出项
+  const handleEditEntry = (entryId: string, description: string, amount: number) => {
+    setEditingExpenseId(entryId)
+    setEditingExpenseDescription(description)
+    setEditingExpenseAmount(amount)
+    setEditExpenseDialogOpen(true)
+  }
+
+  const handleConfirmEditEntry = async (entryId: string, description: string, amount: number) => {
+    if (!currentConfig || !currentConfig.expenseList) return
+
+    // 保存历史状态
+    if (!isHistoryAction.current) {
+      history.pushState(configs, currentConfigId)
+    }
+
+    // 更新支出项
+    const updatedEntries = currentConfig.expenseList.entries.map((entry) =>
+      entry.id === entryId 
+        ? { ...entry, description: description || undefined, amount }
+        : entry
+    )
+    const updatedExpenseList = { entries: updatedEntries }
+    const updatedExpenses = flatListToParsed(updatedExpenseList)
+
+    // 重新构建rawInput
+    const rawInput = Object.entries(updatedExpenses)
+      .map(([cat, entries]) => {
+        const amounts = entries
+          .map((e) => (e.description ? `${e.amount}(${e.description})` : `${e.amount}`))
+          .join(", ")
+        return `${cat}: ${amounts}`
+      })
+      .join("\n")
+
+    try {
+      await updateBill(currentConfig.id, currentConfig.name, rawInput)
+      const updatedConfig = {
+        ...currentConfig,
+        expenses: updatedExpenses,
+        expenseList: updatedExpenseList,
+        rawInput,
+      }
+      const newConfigs = configs.map((c) => (c.id === currentConfigId ? updatedConfig : c))
+      setConfigs(newConfigs)
+
+      // 添加到历史（如果不在历史操作中）
+      if (!isHistoryAction.current) {
+        history.pushState(newConfigs, currentConfigId)
+      }
+    } catch (error) {
+      console.error("Failed to edit entry:", error)
+      alert("修改支出失败，请重试")
+    }
+  }
+
   const handleConfirmCreateEntry = async (category: string, description: string, amount: number) => {
     if (!currentConfig || !currentConfig.expenseList) return
 
@@ -449,7 +510,7 @@ export default function Home() {
         {/* Header */}
         <div className="mb-4 md:mb-6">
           <h1 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-2">
-            记账本
+            虾米记账本
           </h1>
           <p className="text-sm md:text-base text-slate-600 dark:text-slate-400">
             用可视化图表管理您的每一笔支出
@@ -504,6 +565,8 @@ export default function Home() {
                       expenses={currentConfig.expenses}
                       onMoveEntry={handleMoveEntry}
                       onCreateEntry={handleCreateEntry}
+                      onEditEntry={handleEditEntry}
+                      onDeleteEntry={handleDeleteEntry}
                     />
                   </Card>
 
@@ -571,6 +634,29 @@ export default function Home() {
             handleConfirmCreateEntry(createExpenseCategory, description, amount)
           }}
         />
+        {editingExpenseId && (
+          <EditExpenseDialog
+            open={editExpenseDialogOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                setEditingExpenseId(null)
+                setEditExpenseDialogOpen(false)
+              } else {
+                setEditExpenseDialogOpen(true)
+              }
+            }}
+            category={currentConfig?.expenses ? Object.entries(currentConfig.expenses).find(([_, entries]) => 
+              entries.some(e => e.id === editingExpenseId)
+            )?.[0] || "" : ""}
+            initialDescription={editingExpenseDescription}
+            initialAmount={editingExpenseAmount}
+            onEdit={(description, amount) => {
+              handleConfirmEditEntry(editingExpenseId, description, amount)
+              setEditExpenseDialogOpen(false)
+              setEditingExpenseId(null)
+            }}
+          />
+        )}
       </div>
     </main>
   )

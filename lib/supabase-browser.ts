@@ -7,4 +7,13 @@ const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export const supabaseBrowser = createClient(url, anonKey)
 
+export async function getAccessToken(): Promise<string | null> {
+  try {
+    const { data } = await supabaseBrowser.auth.getSession()
+    return data.session?.access_token || null
+  } catch {
+    return null
+  }
+}
+
 

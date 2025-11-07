@@ -7,23 +7,28 @@ import { createClient } from "@supabase/supabase-js"
 export async function GET(request: NextRequest) {
   try {
     const incomingUserId = request.headers.get('x-user-id') || null
+    // 未登录用户不返回任何账单（避免泄露）
+    if (!incomingUserId) {
+      return NextResponse.json([])
+    }
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL
     const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!url || !key) {
       console.error("Supabase env missing:", { url: !!url, key: !!key })
       return NextResponse.json({ error: "Supabase env missing (URL/KEY)" }, { status: 500 })
     }
-    const supabase = createClient(url, key)
+    // 使用前端传来的用户会话令牌，让 Supabase 在 RLS 下识别用户
+    const token = request.headers.get('authorization') || undefined
+    const supabase = createClient(url, key, {
+      global: token ? { headers: { Authorization: token } } : undefined,
+    })
     
-    // 如果有用户ID，只查询该用户的账单；否则查询所有（兼容未登录用户）
+    // 查询当前用户的账单
     let query = supabase
       .from("bills")
       .select("id,name,raw_input,created_at,user_id")
       .order("created_at", { ascending: false })
-    
-    if (incomingUserId) {
-      query = query.eq("user_id", incomingUserId)
-    }
+      .eq("user_id", incomingUserId)
     
     const { data, error } = await query
     if (error) {
@@ -63,7 +68,10 @@ export async function POST(request: NextRequest) {
       console.error("Supabase env missing:", { url: !!url, key: !!key })
       return NextResponse.json({ error: "Supabase env missing (URL/KEY)" }, { status: 500 })
     }
-    const supabasePost = createClient(url, key)
+    const tokenPost = request.headers.get('authorization') || undefined
+    const supabasePost = createClient(url, key, {
+      global: tokenPost ? { headers: { Authorization: tokenPost } } : undefined,
+    })
     const { error } = await supabasePost
       .from("bills")
       .insert({ id, name, raw_input: rawInput || "", user_id: incomingUserId })

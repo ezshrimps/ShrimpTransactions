@@ -1,4 +1,5 @@
 import type { ExpenseConfig } from "@/app/page"
+import { getAccessToken } from "@/lib/supabase-browser"
 
 const API_BASE = "/api/bills"
 
@@ -7,7 +8,11 @@ const API_BASE = "/api/bills"
  */
 export async function fetchBills(): Promise<ExpenseConfig[]> {
   const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
-  const response = await fetch(API_BASE, { headers: userId ? { 'x-user-id': userId } : undefined })
+  const token = await getAccessToken()
+  const headers: Record<string, string> = {}
+  if (userId) headers['x-user-id'] = userId
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const response = await fetch(API_BASE, { headers })
   if (!response.ok) {
     const errorText = await response.text()
     console.error("Failed to fetch bills:", errorText)
@@ -21,9 +26,13 @@ export async function fetchBills(): Promise<ExpenseConfig[]> {
  */
 export async function createBill(id: string, name: string, rawInput: string): Promise<void> {
   const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
+  const token = await getAccessToken()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (userId) headers['x-user-id'] = userId
+  if (token) headers['Authorization'] = `Bearer ${token}`
   const response = await fetch(API_BASE, {
     method: "POST",
-    headers: { "Content-Type": "application/json", ...(userId ? { 'x-user-id': userId } : {}) },
+    headers,
     body: JSON.stringify({ id, name, rawInput }),
   })
   
@@ -39,9 +48,13 @@ export async function createBill(id: string, name: string, rawInput: string): Pr
  */
 export async function updateBill(id: string, name: string, rawInput: string): Promise<void> {
   const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
+  const token = await getAccessToken()
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  if (userId) headers['x-user-id'] = userId
+  if (token) headers['Authorization'] = `Bearer ${token}`
   const response = await fetch(`${API_BASE}/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", ...(userId ? { 'x-user-id': userId } : {}) },
+    headers,
     body: JSON.stringify({ name, rawInput }),
   })
   
@@ -57,7 +70,11 @@ export async function updateBill(id: string, name: string, rawInput: string): Pr
  */
 export async function deleteBill(id: string): Promise<void> {
   const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
-  const response = await fetch(`${API_BASE}/${id}`, { method: "DELETE", headers: userId ? { 'x-user-id': userId } : undefined })
+  const token = await getAccessToken()
+  const headers: Record<string, string> = {}
+  if (userId) headers['x-user-id'] = userId
+  if (token) headers['Authorization'] = `Bearer ${token}`
+  const response = await fetch(`${API_BASE}/${id}`, { method: "DELETE", headers })
   
   if (!response.ok) {
     const errorText = await response.text()

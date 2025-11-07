@@ -1,101 +1,80 @@
 import { NextRequest, NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
 import type { ExpenseConfig } from "@/app/page"
 import { parseExpenseInput } from "@/lib/expense-parser"
-
-const DATA_DIR = path.join(process.cwd(), "data")
-
-// 确保data目录存在
-async function ensureDataDir() {
-  try {
-    await fs.access(DATA_DIR)
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-  }
-}
-
-// 从文件名解析ID和名称
-function parseFilename(filename: string): { id: string; name: string } | null {
-  // 格式: {id}-{name}.txt
-  const match = filename.match(/^(.+?)-(.+)\.txt$/)
-  if (!match) return null
-  
-  return {
-    id: match[1],
-    name: decodeURIComponent(match[2]),
-  }
-}
-
-// 生成文件名
-function generateFilename(id: string, name: string): string {
-  return `${id}-${encodeURIComponent(name)}.txt`
-}
+import { createClient } from "@supabase/supabase-js"
 
 // GET: 获取所有账单
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    await ensureDataDir()
+    const incomingUserId = request.headers.get('x-user-id') || null
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      console.error("Supabase env missing:", { url: !!url, key: !!key })
+      return NextResponse.json({ error: "Supabase env missing (URL/KEY)" }, { status: 500 })
+    }
+    const supabase = createClient(url, key)
     
-    const files = await fs.readdir(DATA_DIR)
-    const bills: ExpenseConfig[] = []
+    // 如果有用户ID，只查询该用户的账单；否则查询所有（兼容未登录用户）
+    let query = supabase
+      .from("bills")
+      .select("id,name,raw_input,created_at,user_id")
+      .order("created_at", { ascending: false })
     
-    for (const file of files) {
-      if (!file.endsWith(".txt")) continue
-      
-      const parsed = parseFilename(file)
-      if (!parsed) continue
-      
-      try {
-        const filePath = path.join(DATA_DIR, file)
-        const rawInput = await fs.readFile(filePath, "utf-8")
-        const expenses = parseExpenseInput(rawInput)
-        
-        // 获取文件创建时间
-        const stats = await fs.stat(filePath)
-        
-        bills.push({
-          id: parsed.id,
-          name: parsed.name,
-          rawInput,
-          expenses,
-          createdAt: stats.birthtimeMs || stats.mtimeMs,
-        })
-      } catch (error) {
-        console.error(`Error reading file ${file}:`, error)
-      }
+    if (incomingUserId) {
+      query = query.eq("user_id", incomingUserId)
     }
     
-    // 按创建时间排序（最新的在前）
-    bills.sort((a, b) => b.createdAt - a.createdAt)
-    
+    const { data, error } = await query
+    if (error) {
+      console.error("Supabase select error:", error)
+      return NextResponse.json({ error: error.message || "Supabase error" }, { status: 500 })
+    }
+
+    const filtered = data || []
+
+    const bills: ExpenseConfig[] = filtered.map((row: any) => ({
+      id: row.id,
+      name: row.name,
+      rawInput: row.raw_input || "",
+      expenses: parseExpenseInput(row.raw_input || ""),
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    }))
+
     return NextResponse.json(bills)
   } catch (error) {
     console.error("Error fetching bills:", error)
-    return NextResponse.json({ error: "Failed to fetch bills" }, { status: 500 })
+    return NextResponse.json({ error: (error as any)?.message || "Failed to fetch bills" }, { status: 500 })
   }
 }
 
 // POST: 创建新账单
 export async function POST(request: NextRequest) {
   try {
-    await ensureDataDir()
-    
     const { id, name, rawInput } = await request.json()
+    const incomingUserId = request.headers.get('x-user-id') || null
     
     if (!id || !name) {
       return NextResponse.json({ error: "ID and name are required" }, { status: 400 })
     }
-    
-    const filename = generateFilename(id, name)
-    const filePath = path.join(DATA_DIR, filename)
-    
-    await fs.writeFile(filePath, rawInput || "", "utf-8")
-    
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      console.error("Supabase env missing:", { url: !!url, key: !!key })
+      return NextResponse.json({ error: "Supabase env missing (URL/KEY)" }, { status: 500 })
+    }
+    const supabasePost = createClient(url, key)
+    const { error } = await supabasePost
+      .from("bills")
+      .insert({ id, name, raw_input: rawInput || "", user_id: incomingUserId })
+    if (error) {
+      console.error("Supabase insert error:", error)
+      return NextResponse.json({ error: error.message || "Supabase error" }, { status: 500 })
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error creating bill:", error)
-    return NextResponse.json({ error: "Failed to create bill" }, { status: 500 })
+    return NextResponse.json({ error: (error as any)?.message || "Failed to create bill" }, { status: 500 })
   }
 }
 

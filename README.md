@@ -1,139 +1,278 @@
-# 记账本 - Stacked Bar Chart Transactions
+# 虾米记账本 - Shrimp Transactions
 
-一个基于 Next.js 的记账网站，使用交互式堆叠柱状图可视化支出数据。
+一个基于 Next.js 的可视化记账应用，支持云同步、拖拽编辑、预算管理等功能。
 
 ## 功能特性
 
+### 核心功能
 - **交互式堆叠柱状图**：使用 D3.js 实现的可拖拽、可交互的堆叠柱状图
+- **云同步**：基于 Supabase 的云端数据存储，支持多设备同步
+- **邮箱登录**：Magic Link 无密码登录，自动注册
 - **两种显示模式**：
-  - **编辑模式**：固定高度的支出条，颜色从绿到红（金额越大越红），支持拖拽移动类别，支持在空白区域点击添加新支出
-  - **预览模式**：按价格比例显示，使用固定配色方案，显示价格轴
-- **账单管理**：
-  - 创建新账单
-  - 导入账单数据
-  - 编辑现有账单
-  - 重命名账单
-  - 删除账单
-- **数据持久化**：账单数据保存在本地 `data/` 文件夹中
-- **撤销/重做**：支持 `Ctrl+Z` 撤销和 `Ctrl+Y` 重做操作
-- **固定类别**：7个固定支出类别（超市、车、房、餐饮、娱乐、订阅、其他）
+  - **编辑模式**：固定高度，颜色由金额决定（绿→红），支持拖拽、点击添加、右键编辑/删除
+  - **预览模式**：按价格比例显示，查看预算对比，总额颜色反映预算使用情况
+
+### 高级功能
+- **CSV 导入**：上传 CSV 文件，映射列（类别/金额/备注），批量导入
+- **预算管理**：为每个类别设置月预算，实时查看超支情况
+- **撤销/重做**：支持 `Ctrl+Z` 和 `Ctrl+Y`
+- **智能分类**：动态类别，会话保留空类别
+- **首次使用教程**：引导新用户快速上手
 
 ## 技术栈
 
-- **框架**：Next.js 16 (App Router)
+- **框架**：Next.js 16 (App Router, Turbopack)
+- **数据库**：Supabase (PostgreSQL + Auth)
 - **可视化**：D3.js
 - **UI组件**：shadcn/ui
 - **样式**：Tailwind CSS
 - **类型安全**：TypeScript
 
-## 安装和运行
+## 快速开始
 
-### 前置要求
-
-- Node.js 18+ 
-- npm 或 pnpm
-
-### 安装依赖
+### 1. 克隆项目
 
 ```bash
-npm install
-# 或
-pnpm install
+git clone https://github.com/ezshrimps/ShrimpTransactions.git
+cd ShrimpTransactions
 ```
 
-### 运行开发服务器
+### 2. 安装依赖
+
+```bash
+npm install --legacy-peer-deps
+```
+
+### 3. 配置 Supabase
+
+#### 3.1 创建 Supabase 项目
+1. 访问 [supabase.com](https://supabase.com) 并登录
+2. 点击 "New project"
+3. 设置项目名称、数据库密码、选择区域
+4. 等待项目初始化完成（约 1-2 分钟）
+
+#### 3.2 创建数据表
+在 Supabase 项目中，进入 **SQL Editor**，执行以下 SQL：
+
+```sql
+-- 创建账单表
+create table if not exists public.bills (
+  id text primary key,
+  name text not null,
+  raw_input text,
+  created_at timestamptz default now(),
+  user_id text
+);
+
+-- 添加索引（提高查询性能）
+create index if not exists bills_user_id_idx on public.bills(user_id);
+create index if not exists bills_created_at_idx on public.bills(created_at desc);
+```
+
+#### 3.3 获取 API 凭据
+1. 进入项目 → **Settings** → **API**
+2. 复制：
+   - **Project URL**
+   - **anon public** API key
+
+### 4. 配置环境变量
+
+在项目根目录创建 `.env.local` 文件：
+
+```env
+NEXT_PUBLIC_SUPABASE_URL=你的项目URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY=你的anon_key
+```
+
+### 5. 运行开发服务器
 
 ```bash
 npm run dev
-# 或
-pnpm dev
 ```
 
-然后在浏览器中打开 [http://localhost:3000](http://localhost:3000)
+访问 [http://localhost:3000](http://localhost:3000)
 
-### 构建生产版本
+## 部署到生产环境
 
-```bash
-npm run build
-# 或
-pnpm build
+### 推荐方式 1：Vercel（最简单）
+
+1. 访问 [vercel.com](https://vercel.com)
+2. 点击 "New Project" → 选择你的 GitHub 仓库
+3. 配置环境变量：
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+4. 点击 "Deploy"
+
+**优点**：
+- 一键部署，自动 CI/CD
+- 全球 CDN 加速
+- 免费额度充足
+
+### 推荐方式 2：Render（适合需要持久文件系统）
+
+1. 访问 [render.com](https://render.com)
+2. New → Web Service → 连接 GitHub 仓库
+3. 配置：
+   - **Build Command**: `npm install --legacy-peer-deps && npm run build`
+   - **Start Command**: `npm run start`
+   - **Environment Variables**: 添加上述两个 Supabase 变量
+4. Deploy
+
+### 推荐方式 3：Netlify
+
+1. 访问 [netlify.com](https://netlify.com)
+2. Add new site → Import from Git
+3. 配置环境变量并部署
+
+## 数据格式说明
+
+### 文本导入格式
+
+```
+超市: 10, 16, 54(hmart), 12
+房租: 600
+水电: 120, 165
+餐厅: 32(麦当劳), 16, 26, 31.2
+车油: 45, 39, 12, 34
 ```
 
-## 数据格式
-
-账单数据可以通过文本导入，格式如下：(当前已限制chart里面的x轴的分类）
-
-```
-超市:
-5.39 (连锁超市A), 32.93 (农产品市场), 11.79 (连锁便利店), 1.51 (小额购物/便利店), 15 (亚洲超市)
-
-车:
-100 (汽车服务/市场), 6 (洗车服务), 144.79 (品牌汽车维修), 39.29 (加油站), 37.12 (加油站), 282 (拖车服务), 18.3 (加油站), 275 (市政警察部门 - 罚单), 5.5 (市政停车服务 - 停车/罚单), 5.5 (市政停车服务 - 停车/罚单), 5.5 (市政停车服务 - 停车/罚单), 5.5 (市政停车服务 - 停车/罚单), 5.5 (市政停车服务 - 停车/罚单), 5.5 (市政停车服务 - 停车/罚单), 447 (车辆管理部门 - 车辆注册/牌照), 8.72 (车辆管理部门 - 费用), 352.12 (保险公司A - 车险), 11.83 (保险公司B - 车险), 14.79 (汽车维修 - 汽车维修), 275 (市政警察部门 - 罚单)
-
-房:
-600 (October Rent - 租金), 150 (Zelle - 房租/水电/网费相关), 25 (Zelle - 房租/水电/网费相关), 25 (Zelle - 房租/水电/网费相关), 26.5 (Zelle - 房租/水电/网费相关), 16 (Zelle - 房租/水电/网费相关), 25.68 (Zelle - 房租/水电/网费相关), 1000 (Depositpart1 - 押金)
-
-餐饮:
-8.6 (连锁快餐A), 5 (饮品店), 15.99 (校园/食堂餐饮), 17.67 (外卖平台A), 1.01 (小额餐饮/便利店), 15.79 (小额餐饮/便利店), 59.7 (中高档餐厅A), 10.93 (连锁快餐A), 17.5 (餐厅B), 43.34 (外卖平台B), 22.08 (中高档餐厅C), 39.36 (特色餐厅D), 7.74 (甜品店), 7.72 (连锁快餐A), 7.72 (连锁快餐A)
-
-娱乐:
-16.69 (娱乐中心/游戏厅 - 娱乐), 128 (主题公园 - 门票/娱乐), 40 (主题公园 - 门票/娱乐)
-
-订阅:
-14.99 (软件服务A), 1.99 (云服务A), 3.99 (App Store/iTunes), 11.99 (软件服务B), 2.99 (App Store/iTunes), 2.99 (App Store/iTunes)
-
-其他:
-5 (市政服务亭/费用 - 杂项/服务费), 16.8 (家居用品连锁店 - 家居用品/杂项), 44.15 (电子产品零售商A - 电子产品/配件), 27.59 (电子产品零售商B - 电子产品/配件), 9.95 (数字服务/游戏平台 - 游戏/数字服务), 0.51 (云服务平台 - 费用), 69.95 (教育/驾校服务 - 驾校/课程), 20.24 (Zelle - 个人转账), 32 (Zelle - 个人转账), 16.15 (Zelle - 个人转账), 32 (Zelle - 个人转账), 32 (Zelle - 个人转账), 18.98 (Zelle - 个人转账), 11.75 (LATE FEE - 滞纳金), 15 (银行/金融机构 - 电汇费), 27.59 (电子产品零售商B - 电子产品/配件)
-```
-
-格式说明：
+格式规则：
 - 每行一个类别：`类别名: 金额1, 金额2(备注), 金额3`
-- 金额后面可以添加括号备注，如 `54(hmart)`
+- 金额后可添加括号备注
 - 多个金额用逗号分隔
 
-## 项目结构
+### CSV 导入格式
+
+上传 CSV 文件后，需要映射以下列：
+- **类别列**：支出所属类别
+- **金额列**：支出金额（支持 $、逗号分隔符）
+- **备注列**（可选）：支出说明
+
+示例 CSV：
+```csv
+类别,金额,备注
+超市,25.50,购物
+餐饮,18.00,午餐
+车,45.00,加油
+```
+
+## 使用指南
+
+### 编辑模式操作
+- **添加支出**：点击类别的空白区域
+- **移动支出**：拖拽支出条到其他类别
+- **编辑支出**：右键点击支出条 → 修改
+- **删除支出**：右键点击支出条 → 删除
+- **撤销操作**：`Ctrl+Z`
+- **重做操作**：`Ctrl+Y` 或 `Ctrl+Shift+Z`
+
+### 预览模式操作
+- **查看总额**：每个类别顶部显示总支出
+- **设置预算**：点击类别下方的预算数字
+- **预算提醒**：总额颜色表示预算使用情况
+  - 绿色：<75% 充裕
+  - 黄色：75-95% 接近
+  - 橙色：95-100% 临界
+  - 红色：>100% 超支
+
+## 快捷键
+
+| 快捷键 | 功能 |
+|--------|------|
+| `Ctrl+Z` | 撤销当前账单的支出操作 |
+| `Ctrl+Y` | 重做 |
+| `Ctrl+Shift+Z` | 重做（备选） |
+
+## 开发说明
+
+### 项目结构
 
 ```
 ├── app/                    # Next.js App Router
-│   ├── api/               # API 路由（账单 CRUD）
+│   ├── api/               # API 路由（Supabase 集成）
+│   │   └── bills/         # 账单 CRUD 接口
 │   ├── page.tsx           # 主页面
-│   └── layout.tsx         # 布局组件
+│   └── layout.tsx         # 根布局
 ├── components/            # React 组件
-│   ├── expense-chart-interactive.tsx  # 交互式图表组件
-│   └── ui/                # shadcn/ui 组件
+│   ├── expense-chart-interactive.tsx  # D3.js 交互图表
+│   ├── auth-bar.tsx       # 登录组件
+│   ├── onboarding-tour.tsx  # 首次使用教程
+│   ├── import-csv-dialog.tsx  # CSV 导入
+│   └── ui/                # shadcn/ui 基础组件
 ├── lib/                   # 工具函数
-│   ├── expense-parser.ts  # 数据解析器
-│   ├── bill-api.ts        # 账单 API 客户端
-│   └── expense-utils.ts    # 支出工具函数
-├── hooks/                 # React Hooks
-│   ├── use-history.ts     # 撤销/重做历史管理
-│   └── use-keyboard-shortcuts.ts  # 键盘快捷键
-└── data/                  # 账单数据存储（.txt 文件）
+│   ├── expense-parser.ts  # 文本解析器
+│   ├── bill-api.ts        # API 客户端（支持用户隔离）
+│   ├── expense-utils.ts   # 数据转换工具
+│   └── supabase-browser.ts  # Supabase 浏览器客户端
+├── hooks/                 # 自定义 Hooks
+│   ├── use-history.ts     # 撤销/重做管理
+│   └── use-keyboard-shortcuts.ts  # 全局快捷键
+└── data/                  # 本地数据（已弃用，现用 Supabase）
 ```
 
-## 主要功能说明
+### 数据模型
 
-### 编辑模式
+```typescript
+interface ExpenseEntry {
+  id: string              // 唯一标识符
+  category: string        // 类别
+  amount: number          // 金额
+  description?: string    // 备注（可选）
+}
 
-- 所有支出条高度固定（25px）
-- 颜色根据金额从绿色渐变到红色
-- 支持拖拽支出条在不同类别间移动
-- 点击类别空白区域可添加新支出
-- Y轴不显示价格
+interface ExpenseConfig {
+  id: string              // 账单 ID
+  name: string            // 账单名称
+  rawInput: string        // 原始文本
+  expenses: ParsedExpenses  // 解析后的数据
+  expenseList?: ExpenseList // 扁平化列表
+  createdAt: number       // 创建时间
+}
+```
 
-### 预览模式
+### Supabase 表结构
 
-- 支出条高度按价格比例显示
-- 使用固定的配色方案
-- 显示价格Y轴
-- 不支持拖拽
+**bills 表**：
+```sql
+id text primary key,
+name text not null,
+raw_input text,
+created_at timestamptz default now(),
+user_id text
+```
 
-### 快捷键
+## 故障排查
 
-- `Ctrl+Z`：撤销操作
-- `Ctrl+Y`：重做操作
+### 问题：页面显示"加载账单列表失败"
+- 检查 `.env.local` 中的 Supabase 环境变量是否正确
+- 确认 Supabase 项目中 `bills` 表已创建
+- 查看浏览器控制台的网络请求，检查 `/api/bills` 返回的错误信息
+
+### 问题：登录链接发送失败
+- 检查 Supabase 项目的 Email Auth 是否启用
+- 在 Supabase Dashboard → Authentication → Settings 中确认 Email Provider 已配置
+
+### 问题：数据不同步
+- 确认已登录（右上角显示邮箱）
+- 检查浏览器控制台是否有 API 错误
+
+## 路线图
+
+- [x] 云同步与用户隔离
+- [x] 邮箱登录
+- [x] CSV 导入
+- [x] 预算管理
+- [ ] 多币种支持
+- [ ] 发票 OCR 识别
+- [ ] 协作账本（家庭/室友）
+- [ ] 移动端 PWA
+- [ ] 多语言（中/英）
+- [ ] 数据导出（PDF/Excel）
+
+## 贡献
+
+欢迎提交 Issue 和 Pull Request！
 
 ## License
 
 MIT
-

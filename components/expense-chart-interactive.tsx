@@ -87,6 +87,17 @@ export function ExpenseChartInteractive({
     p90: number
     max: number
   } | null>(null)
+  // 会话类别列表（保留当前会话中出现过的所有类别，即使被拖空也不移除）
+  const [sessionCategories, setSessionCategories] = useState<string[]>([])
+
+  // 当 expenses 变化时，更新会话类别列表（添加新类别，但不删除旧类别）
+  useEffect(() => {
+    const currentCategories = Object.keys(expenses)
+    setSessionCategories((prev) => {
+      const newCats = currentCategories.filter((c) => !prev.includes(c))
+      return prev.length === 0 ? currentCategories : [...prev, ...newCats]
+    })
+  }, [expenses])
 
   // 计算尺寸 - 根据数据动态调整，确保宽度在屏幕内
   useEffect(() => {
@@ -172,8 +183,8 @@ export function ExpenseChartInteractive({
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`)
 
-    // 准备数据 - 动态类别顺序
-    const categories = Object.keys(expenses)
+    // 准备数据 - 使用会话类别列表（保留空类别）
+    const categories = sessionCategories.length > 0 ? sessionCategories : Object.keys(expenses)
     const allEntries: Array<{ entry: ExpenseEntry; category: string; index: number }> = []
     categories.forEach((category) => {
       if (expenses[category]) {
@@ -183,7 +194,7 @@ export function ExpenseChartInteractive({
       }
     })
 
-    // 设置比例尺 - 使用固定类别顺序，即使没有数据也保留位置
+    // 设置比例尺 - 使用会话类别列表，保留空类别位置
     // 两种模式都使用相同的padding
     const xPadding = 0.15
     const xScale = (d3.scaleBand as any)()
@@ -565,8 +576,8 @@ export function ExpenseChartInteractive({
         // 同时记录鼠标当前位置
         setMousePos({ x: gx, y: gy })
 
-        // 高亮目标类别 - 使用固定类别列表
-        const targetCategory = Object.keys(expenses).find((cat) => {
+        // 高亮目标类别 - 使用会话类别列表
+        const targetCategory = categories.find((cat) => {
           const xPos = xScale(cat) || 0
           const xEnd = xPos + (xScale.bandwidth as any)()
           return gx >= xPos && gx <= xEnd
@@ -596,8 +607,8 @@ export function ExpenseChartInteractive({
         const [mx] = (d3.pointer as any)(event, svg.node())
         const gx = mx - margin.left
 
-        // 确定目标类别 - 使用固定类别列表
-        const targetCategory = Object.keys(expenses).find((cat) => {
+        // 确定目标类别 - 使用会话类别列表
+        const targetCategory = categories.find((cat) => {
           const xPos = xScale(cat) || 0
           const xEnd = xPos + (xScale.bandwidth as any)()
           return gx >= xPos && gx <= xEnd
@@ -624,8 +635,8 @@ export function ExpenseChartInteractive({
     // 添加整个空白区域（仅在编辑模式下）
     // 为每个类别创建从顶部到segments顶部的整个空白区域，都可以点击添加
     if (displayMode === "edit" && onCreateEntry) {
-      // 为每个类别计算空白区域
-      const categoryEmptyAreas = Object.keys(expenses).map((category) => {
+      // 为每个类别计算空白区域（使用会话类别列表，包括空类别）
+      const categoryEmptyAreas = categories.map((category) => {
         // 找到当前类别最顶部的segment位置
         const categorySegments = segments.filter((s) => s.category === category)
         let emptyAreaTop = 0 // 类别顶部（像素坐标0）
@@ -968,7 +979,7 @@ export function ExpenseChartInteractive({
         .attr("stroke-width", 1)
     }
 
-  }, [dimensions, expenses, onMoveEntry, onCreateEntry, displayMode, budgets])
+  }, [dimensions, expenses, onMoveEntry, onCreateEntry, displayMode, budgets, sessionCategories])
 
   // 单独处理拖拽预览和高亮
   useEffect(() => {
@@ -985,10 +996,12 @@ export function ExpenseChartInteractive({
       return
     }
 
-    const margin = { top: 40, right: 40, bottom: 120, left: 80 }
+    const margin = { top: 40, right: 40, bottom: displayMode === "preview" ? 150 : 120, left: 80 }
     const width = dimensions.width - margin.left - margin.right
     const height = dimensions.height - margin.top - margin.bottom
 
+    // 使用会话类别列表（保留空类别）
+    const categories = sessionCategories.length > 0 ? sessionCategories : Object.keys(expenses)
     const xScale = (d3.scaleBand as any)()
       .domain(categories)
       .range([0, width])
@@ -1125,7 +1138,7 @@ export function ExpenseChartInteractive({
       .attr("stroke-dasharray", "6,4")
       .attr("pointer-events", "none")
       .attr("filter", "drop-shadow(0 6px 12px rgba(0,0,0,0.25))")
-  }, [draggedSegment, dragOffset, mousePos, hoveredCategory, dimensions, expenses, displayMode])
+  }, [draggedSegment, dragOffset, mousePos, hoveredCategory, dimensions, expenses, displayMode, sessionCategories])
 
   return (
     <div className="w-full">

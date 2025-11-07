@@ -6,7 +6,8 @@ const API_BASE = "/api/bills"
  * 获取所有账单
  */
 export async function fetchBills(): Promise<ExpenseConfig[]> {
-  const response = await fetch(API_BASE)
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
+  const response = await fetch(API_BASE, { headers: userId ? { 'x-user-id': userId } : undefined })
   if (!response.ok) {
     const errorText = await response.text()
     console.error("Failed to fetch bills:", errorText)
@@ -19,9 +20,10 @@ export async function fetchBills(): Promise<ExpenseConfig[]> {
  * 创建新账单
  */
 export async function createBill(id: string, name: string, rawInput: string): Promise<void> {
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
   const response = await fetch(API_BASE, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(userId ? { 'x-user-id': userId } : {}) },
     body: JSON.stringify({ id, name, rawInput }),
   })
   
@@ -36,9 +38,10 @@ export async function createBill(id: string, name: string, rawInput: string): Pr
  * 更新账单
  */
 export async function updateBill(id: string, name: string, rawInput: string): Promise<void> {
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
   const response = await fetch(`${API_BASE}/${id}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...(userId ? { 'x-user-id': userId } : {}) },
     body: JSON.stringify({ name, rawInput }),
   })
   
@@ -53,9 +56,8 @@ export async function updateBill(id: string, name: string, rawInput: string): Pr
  * 删除账单
  */
 export async function deleteBill(id: string): Promise<void> {
-  const response = await fetch(`${API_BASE}/${id}`, {
-    method: "DELETE",
-  })
+  const userId = typeof window !== 'undefined' ? localStorage.getItem('xiami_user_id') : null
+  const response = await fetch(`${API_BASE}/${id}`, { method: "DELETE", headers: userId ? { 'x-user-id': userId } : undefined })
   
   if (!response.ok) {
     const errorText = await response.text()

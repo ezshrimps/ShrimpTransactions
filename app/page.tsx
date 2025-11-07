@@ -9,6 +9,7 @@ import { ImportDialog } from "@/components/import-dialog"
 import { EditBillDialog } from "@/components/edit-bill-dialog"
 import { CreateExpenseDialog } from "@/components/create-expense-dialog"
 import { EditExpenseDialog } from "@/components/edit-expense-dialog"
+import { ImportCsvDialog } from "@/components/import-csv-dialog"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { fetchBills, createBill, updateBill, deleteBill } from "@/lib/bill-api"
@@ -20,6 +21,8 @@ import {
 } from "@/lib/expense-utils"
 import { useHistory } from "@/hooks/use-history"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
+import { AuthBar } from "@/components/auth-bar"
+import { OnboardingTour } from "@/components/onboarding-tour"
 
 export interface ExpenseEntry {
   id: string // 唯一标识符
@@ -54,6 +57,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [importCsvOpen, setImportCsvOpen] = useState(false)
   const [createExpenseDialogOpen, setCreateExpenseDialogOpen] = useState(false)
   const [createExpenseCategory, setCreateExpenseCategory] = useState<string>("")
   const [editExpenseDialogOpen, setEditExpenseDialogOpen] = useState(false)
@@ -534,9 +538,12 @@ export default function Home() {
           <h1 className="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white mb-2">
             虾米记账本
           </h1>
-          <p className="text-sm md:text-base text-slate-600 dark:text-slate-400">
-            用可视化图表管理您的每一笔支出
-          </p>
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-sm md:text-base text-slate-600 dark:text-slate-400">
+              用可视化图表管理您的每一笔支出
+            </p>
+            <AuthBar />
+          </div>
         </div>
 
         {/* Main Grid */}
@@ -562,6 +569,13 @@ export default function Home() {
                 >
                   导入
                 </Button>
+                <Button
+                  onClick={() => setImportCsvOpen(true)}
+                  className="w-full"
+                  variant="outline"
+                >
+                  导入 CSV
+                </Button>
               </div>
               <ConfigList
                 configs={configs}
@@ -584,6 +598,7 @@ export default function Home() {
                       支出分析
                     </h2>
                     <ExpenseChartInteractive
+                      key={currentConfigId}
                       expenses={currentConfig.expenses}
                       onMoveEntry={handleMoveEntry}
                       onCreateEntry={handleCreateEntry}
@@ -635,6 +650,32 @@ export default function Home() {
           onOpenChange={setImportDialogOpen}
           onImport={(rawInput, expenses, name) => handleImportBill(name, rawInput, expenses)}
         />
+        {importCsvOpen && (
+          <ImportCsvDialog
+            open={importCsvOpen}
+            onOpenChange={setImportCsvOpen}
+            onImportParsed={async (grouped) => {
+              if (!currentConfigId) {
+                alert("请先选择一个账单或创建新账单")
+                return
+              }
+              const cfg = configs.find((c) => c.id === currentConfigId)
+              if (!cfg) return
+              const merged: Record<string, { amount: number; description?: string }[]> = {}
+              Object.keys(cfg.expenses || {}).forEach((cat) => {
+                merged[cat] = (cfg.expenses[cat] || []).map((e) => ({ amount: e.amount, description: e.description }))
+              })
+              Object.entries(grouped).forEach(([cat, arr]) => {
+                if (!merged[cat]) merged[cat] = []
+                merged[cat].push(...arr)
+              })
+              const newRaw = Object.entries(merged)
+                .map(([cat, arr]) => `${cat}: ${arr.map((e) => e.description ? `${e.amount}(${e.description})` : `${e.amount}`).join(", ")}`)
+                .join("\n")
+              await handleSaveEdit(cfg.id, cfg.name, newRaw, parseExpenseInput(newRaw))
+            }}
+          />
+        )}
         {editingConfig && (
           <EditBillDialog
             open={editingConfigId !== null}
@@ -679,6 +720,7 @@ export default function Home() {
             }}
           />
         )}
+        <OnboardingTour />
       </div>
     </main>
   )

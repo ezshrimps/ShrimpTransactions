@@ -18,8 +18,8 @@ export function useKeyboardShortcuts(shortcuts: KeyboardShortcut[]) {
         const altMatch = shortcut.alt === undefined || shortcut.alt === e.altKey
         const metaMatch = shortcut.meta === undefined || shortcut.meta === e.metaKey
         const keyMatch =
-          shortcut.key.toLowerCase() === e.key.toLowerCase() ||
-          shortcut.key.toLowerCase() === e.code.toLowerCase()
+          (e.key && shortcut.key.toLowerCase() === e.key.toLowerCase()) ||
+          (e.code && shortcut.key.toLowerCase() === e.code.toLowerCase())
 
         // 检查是否匹配所有条件
         if (ctrlMatch && shiftMatch && altMatch && metaMatch && keyMatch) {

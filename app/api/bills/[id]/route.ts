@@ -1,46 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
 import { parseExpenseInput } from "@/lib/expense-parser"
-
-const DATA_DIR = path.join(process.cwd(), "data")
-
-// 确保data目录存在
-async function ensureDataDir() {
-  try {
-    await fs.access(DATA_DIR)
-  } catch {
-    await fs.mkdir(DATA_DIR, { recursive: true })
-  }
-}
-
-// 从文件名解析ID和名称
-function parseFilename(filename: string): { id: string; name: string } | null {
-  const match = filename.match(/^(.+?)-(.+)\.txt$/)
-  if (!match) return null
-  return {
-    id: match[1],
-    name: decodeURIComponent(match[2]),
-  }
-}
-
-// 生成文件名
-function generateFilename(id: string, name: string): string {
-  return `${id}-${encodeURIComponent(name)}.txt`
-}
-
-// 根据ID查找文件
-async function findFileById(id: string): Promise<string | null> {
-  const files = await fs.readdir(DATA_DIR)
-  for (const file of files) {
-    if (!file.endsWith(".txt")) continue
-    const parsed = parseFilename(file)
-    if (parsed && parsed.id === id) {
-      return file
-    }
-  }
-  return null
-}
+import { createClient } from "@supabase/supabase-js"
 
 // GET: 获取单个账单
 export async function GET(
@@ -48,32 +8,38 @@ export async function GET(
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    await ensureDataDir()
-    
     const params = context.params instanceof Promise ? await context.params : context.params
     const id = params.id
-    
-    const filename = await findFileById(id)
-    if (!filename) {
-      return NextResponse.json({ error: "Bill not found" }, { status: 404 })
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      console.error("Supabase env missing:", { url: !!url, key: !!key })
+      return NextResponse.json({ error: "Supabase env missing (URL/KEY)" }, { status: 500 })
     }
-    
-    const filePath = path.join(DATA_DIR, filename)
-    const rawInput = await fs.readFile(filePath, "utf-8")
+    const supabase = createClient(url, key)
+    const { data, error } = await supabase
+      .from("bills")
+      .select("id,name,raw_input,created_at,user_id")
+      .eq("id", id)
+      .maybeSingle()
+    if (error) {
+      console.error("Supabase select error:", error)
+      return NextResponse.json({ error: error.message || "Supabase error" }, { status: 500 })
+    }
+    if (!data) return NextResponse.json({ error: "Bill not found" }, { status: 404 })
+
+    const rawInput = data.raw_input || ""
     const expenses = parseExpenseInput(rawInput)
-    const stats = await fs.stat(filePath)
-    const parsed = parseFilename(filename)
-    
     return NextResponse.json({
-      id,
-      name: parsed?.name || id,
+      id: data.id,
+      name: data.name,
       rawInput,
       expenses,
-      createdAt: stats.birthtimeMs || stats.mtimeMs,
+      createdAt: data.created_at ? new Date(data.created_at).getTime() : Date.now(),
     })
   } catch (error) {
     console.error("Error fetching bill:", error)
-    return NextResponse.json({ error: "Failed to fetch bill" }, { status: 500 })
+    return NextResponse.json({ error: (error as any)?.message || "Failed to fetch bill" }, { status: 500 })
   }
 }
 
@@ -83,32 +49,29 @@ export async function PUT(
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    await ensureDataDir()
-    
     const params = context.params instanceof Promise ? await context.params : context.params
     const id = params.id
     const { name, rawInput } = await request.json()
-    
-    const oldFilename = await findFileById(id)
-    if (!oldFilename) {
-      return NextResponse.json({ error: "Bill not found" }, { status: 404 })
+    const incomingUserId = request.headers.get('x-user-id') || null
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      console.error("Supabase env missing:", { url: !!url, key: !!key })
+      return NextResponse.json({ error: "Supabase env missing (URL/KEY)" }, { status: 500 })
     }
-    
-    // 如果名称改变，删除旧文件并创建新文件
-    const newFilename = generateFilename(id, name)
-    const newFilePath = path.join(DATA_DIR, newFilename)
-    
-    if (oldFilename !== newFilename) {
-      const oldFilePath = path.join(DATA_DIR, oldFilename)
-      await fs.unlink(oldFilePath)
+    const supabasePut = createClient(url, key)
+    const { error } = await supabasePut
+      .from("bills")
+      .update({ name, raw_input: rawInput || "" })
+      .eq("id", id)
+    if (error) {
+      console.error("Supabase update error:", error)
+      return NextResponse.json({ error: error.message || "Supabase error" }, { status: 500 })
     }
-    
-    await fs.writeFile(newFilePath, rawInput || "", "utf-8")
-    
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error updating bill:", error)
-    return NextResponse.json({ error: "Failed to update bill" }, { status: 500 })
+    return NextResponse.json({ error: (error as any)?.message || "Failed to update bill" }, { status: 500 })
   }
 }
 
@@ -118,23 +81,27 @@ export async function DELETE(
   context: { params: Promise<{ id: string }> | { id: string } }
 ) {
   try {
-    await ensureDataDir()
-    
     const params = context.params instanceof Promise ? await context.params : context.params
     const id = params.id
-    
-    const filename = await findFileById(id)
-    if (!filename) {
-      return NextResponse.json({ error: "Bill not found" }, { status: 404 })
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) {
+      console.error("Supabase env missing:", { url: !!url, key: !!key })
+      return NextResponse.json({ error: "Supabase env missing (URL/KEY)" }, { status: 500 })
     }
-    
-    const filePath = path.join(DATA_DIR, filename)
-    await fs.unlink(filePath)
-    
+    const supabaseDel = createClient(url, key)
+    const { error } = await supabaseDel
+      .from("bills")
+      .delete()
+      .eq("id", id)
+    if (error) {
+      console.error("Supabase delete error:", error)
+      return NextResponse.json({ error: error.message || "Supabase error" }, { status: 500 })
+    }
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("Error deleting bill:", error)
-    return NextResponse.json({ error: "Failed to delete bill" }, { status: 500 })
+    return NextResponse.json({ error: (error as any)?.message || "Failed to delete bill" }, { status: 500 })
   }
 }
 

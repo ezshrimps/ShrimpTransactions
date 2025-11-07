@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 
-export default function WeChatCallback() {
+function WeChatCallbackContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
@@ -108,6 +108,23 @@ export default function WeChatCallback() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function WeChatCallback() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+            <p className="text-slate-600">正在加载...</p>
+          </div>
+        </div>
+      }
+    >
+      <WeChatCallbackContent />
+    </Suspense>
   )
 }
 

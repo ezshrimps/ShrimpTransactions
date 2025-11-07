@@ -1,19 +1,23 @@
 "use client"
 
-import { useEffect, useState, Suspense } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 
-function WeChatCallbackContent() {
+// 禁用静态生成，强制动态渲染
+export const dynamic = 'force-dynamic'
+
+export default function WeChatCallback() {
   const router = useRouter()
-  const searchParams = useSearchParams()
   const [status, setStatus] = useState<"loading" | "success" | "error">("loading")
   const [message, setMessage] = useState("正在处理微信登录...")
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
-        const userDataStr = searchParams.get("user")
+        // 使用 window.location.search 而不是 useSearchParams，避免构建时错误
+        const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+        const userDataStr = params.get("user")
         if (!userDataStr) {
           setStatus("error")
           setMessage("缺少用户信息")
@@ -83,7 +87,7 @@ function WeChatCallbackContent() {
     }
 
     handleCallback()
-  }, [searchParams, router])
+  }, [router])
 
   return (
     <div className="flex items-center justify-center min-h-screen">
@@ -108,23 +112,6 @@ function WeChatCallbackContent() {
         )}
       </div>
     </div>
-  )
-}
-
-export default function WeChatCallback() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center min-h-screen">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-            <p className="text-slate-600">正在加载...</p>
-          </div>
-        </div>
-      }
-    >
-      <WeChatCallbackContent />
-    </Suspense>
   )
 }
 

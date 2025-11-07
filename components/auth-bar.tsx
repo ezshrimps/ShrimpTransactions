@@ -17,6 +17,7 @@ export function AuthBar() {
       setUserEmail(e)
       if (data.user?.id) {
         try { localStorage.setItem("xiami_user_id", data.user.id) } catch (_) {}
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('xiami-auth-changed'))
       }
     })
     const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_e, sess) => {
@@ -24,6 +25,7 @@ export function AuthBar() {
       setUserEmail(e)
       if (sess?.user?.id) {
         try { localStorage.setItem("xiami_user_id", sess.user.id) } catch (_) {}
+        if (typeof window !== 'undefined') window.dispatchEvent(new Event('xiami-auth-changed'))
       }
     })
     return () => { sub.subscription.unsubscribe() }
@@ -33,9 +35,13 @@ export function AuthBar() {
     if (!email) return
     setSending(true)
     setInfo(null)
+    const siteUrl =
+      (typeof window !== "undefined" && window.location.origin) ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      undefined
     const { error } = await supabaseBrowser.auth.signInWithOtp({
       email,
-      options: { emailRedirectTo: typeof window !== "undefined" ? window.location.origin : undefined },
+      options: { emailRedirectTo: siteUrl },
     })
     setSending(false)
     if (error) {
@@ -49,6 +55,7 @@ export function AuthBar() {
     await supabaseBrowser.auth.signOut()
     setUserEmail(null)
     try { localStorage.removeItem("xiami_user_id") } catch (_) {}
+    if (typeof window !== 'undefined') window.dispatchEvent(new Event('xiami-auth-changed'))
   }
 
   return (

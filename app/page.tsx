@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import { ExpenseChartInteractive } from "@/components/expense-chart-interactive"
 import { ExpenseList } from "@/components/expense-list"
 import { ConfigList } from "@/components/config-list"
@@ -71,6 +71,25 @@ export default function Home() {
 
   const currentConfig = configs?.find((c) => c.id === currentConfigId)
 
+  // 抽取为可复用的加载函数
+  const reloadBills = useCallback(async () => {
+    try {
+      setLoading(true)
+      const bills = await fetchBills()
+      const billsWithLists = bills.map((bill) => {
+        const expensesWithIds = addIdsToParsed(bill.expenses)
+        const expenseList = parsedToFlatList(expensesWithIds)
+        return { ...bill, expenses: expensesWithIds, expenseList }
+      })
+      setConfigs(billsWithLists)
+      history.clearHistory()
+    } catch (error) {
+      console.error("Failed to load bills:", error)
+    } finally {
+      setLoading(false)
+    }
+  }, [history])
+
   // 加载账单列表
   useEffect(() => {
     async function loadBills() {
@@ -97,8 +116,20 @@ export default function Home() {
         setLoading(false)
       }
     }
-    loadBills()
-  }, [])
+    reloadBills()
+  }, [reloadBills])
+
+  // 监听登录/登出事件自动刷新
+  useEffect(() => {
+    const handler = () => reloadBills()
+    window.addEventListener('xiami-auth-changed', handler)
+    const storageHandler = (e) => { if (e.key === 'xiami_user_id') reloadBills() }
+    window.addEventListener('storage', storageHandler)
+    return () => {
+      window.removeEventListener('xiami-auth-changed', handler)
+      window.removeEventListener('storage', storageHandler)
+    }
+  }, [reloadBills])
 
   // 快捷键支持（只影响当前账单内的支出项操作）
   useKeyboardShortcuts([

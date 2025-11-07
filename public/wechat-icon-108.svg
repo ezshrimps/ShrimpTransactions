@@ -1,0 +1,65 @@
+<svg width="108" height="108" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景圆形，带渐变 -->
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#66BB6A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4CAF50;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="coinGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFEB3B;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FFD700;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="shrimpGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FF8A80;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF6B6B;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- 背景圆形 -->
+  <circle cx="54" cy="54" r="50" fill="url(#bgGradient)" stroke="#2E7D32" stroke-width="2"/>
+  
+  <!-- 钱币（左侧，更大更详细） -->
+  <g transform="translate(20, 30)">
+    <!-- 外圈 -->
+    <circle cx="20" cy="24" r="18" fill="url(#coinGradient)" stroke="#FFA000" stroke-width="1.5"/>
+    <!-- 内圈 -->
+    <circle cx="20" cy="24" r="12" fill="none" stroke="#FFA000" stroke-width="1.2"/>
+    <!-- 钱币符号 -->
+    <text x="20" y="28" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#FF8C00" text-anchor="middle">$</text>
+    <!-- 钱币高光 -->
+    <ellipse cx="16" cy="20" rx="4" ry="6" fill="#FFF" opacity="0.3"/>
+  </g>
+  
+  <!-- 虾（右侧，更详细） -->
+  <g transform="translate(55, 25)">
+    <!-- 虾身体（分段，更立体） -->
+    <path d="M 8 32 Q 12 28, 16 30 Q 20 32, 24 30 Q 28 28, 32 30" 
+          stroke="url(#shrimpGradient)" stroke-width="3" fill="none" stroke-linecap="round"/>
+    <!-- 虾身体填充 -->
+    <path d="M 8 32 Q 12 28, 16 30 Q 20 32, 24 30 Q 28 28, 32 30 L 32 35 Q 28 33, 24 35 Q 20 37, 16 35 Q 12 33, 8 35 Z" 
+          fill="url(#shrimpGradient)" opacity="0.8"/>
+    
+    <!-- 虾头（更圆润） -->
+    <ellipse cx="8" cy="33" rx="4" ry="6" fill="#FF6B6B"/>
+    <ellipse cx="6" cy="31" rx="2" ry="3" fill="#FFF" opacity="0.4"/>
+    
+    <!-- 虾眼睛 -->
+    <circle cx="6" cy="32" r="1.5" fill="#000"/>
+    <circle cx="6.3" cy="31.7" r="0.5" fill="#FFF"/>
+    
+    <!-- 虾尾（扇形） -->
+    <path d="M 32 30 L 38 28 L 38 32 L 32 35 Z" fill="#FF6B6B"/>
+    <path d="M 32 30 Q 35 29, 38 30" stroke="#FF5252" stroke-width="1.5" fill="none"/>
+    
+    <!-- 虾须（更明显） -->
+    <line x1="8" y1="28" x2="4" y2="20" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round"/>
+    <line x1="8" y1="38" x2="4" y2="46" stroke="#FF6B6B" stroke-width="2" stroke-linecap="round"/>
+    <line x1="6" y1="30" x2="2" y2="24" stroke="#FF6B6B" stroke-width="1.5" stroke-linecap="round"/>
+    
+    <!-- 虾腿（简化，几根短线） -->
+    <line x1="16" y1="32" x2="14" y2="36" stroke="#FF6B6B" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="20" y1="33" x2="18" y2="37" stroke="#FF6B6B" stroke-width="1.5" stroke-linecap="round"/>
+    <line x1="24" y1="32" x2="22" y2="36" stroke="#FF6B6B" stroke-width="1.5" stroke-linecap="round"/>
+  </g>
+</svg>
+

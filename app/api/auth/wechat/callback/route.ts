@@ -60,20 +60,73 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(`${redirect}?error=获取用户信息失败`)
     }
 
-    // 第三步：将用户信息传递给前端处理
-    // 前端会调用 /api/auth/wechat/session 来创建 Supabase session
-    const userData = {
-      openid: userInfo.openid,
-      unionid: userInfo.unionid,
-      nickname: userInfo.nickname,
-      avatar: userInfo.headimgurl,
+    // 第三步：直接在服务端创建 Supabase session
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+    if (!supabaseUrl || !supabaseServiceKey) {
+      return NextResponse.redirect(`${redirect}?error=系统配置错误`)
     }
 
-    // 重定向到前端回调页面，携带用户信息
-    const redirectUrl = new URL(`${redirect}/auth/wechat/callback`)
-    redirectUrl.searchParams.set("user", Buffer.from(JSON.stringify(userData)).toString("base64"))
+    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    })
 
-    return NextResponse.redirect(redirectUrl.toString())
+    const email = `${userInfo.openid}@wechat.local`
+    let userId: string | null = null
+
+    // 查找现有用户
+    const { data: users } = await supabase.auth.admin.listUsers()
+    const existingUser = users?.users?.find(
+      (u) => u.user_metadata?.wechat_openid === userInfo.openid
+    )
+
+    if (existingUser) {
+      userId = existingUser.id
+    } else {
+      // 创建新用户
+      const { data: newUser, error: createError } = await supabase.auth.admin.createUser({
+        email,
+        email_confirm: true,
+        user_metadata: {
+          wechat_openid: userInfo.openid,
+          nickname: userInfo.nickname,
+          avatar: userInfo.headimgurl,
+          provider: "wechat",
+        },
+      })
+
+      if (createError) {
+        console.error("创建用户失败:", createError)
+        return NextResponse.redirect(`${redirect}?error=创建用户失败`)
+      }
+
+      userId = newUser.user?.id || null
+    }
+
+    if (!userId) {
+      return NextResponse.redirect(`${redirect}?error=无法获取用户ID`)
+    }
+
+    // 生成 magic link 用于登录
+    const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
+      type: "magiclink",
+      email,
+      options: {
+        redirectTo: redirect,
+      },
+    })
+
+    if (linkError || !linkData?.properties?.action_link) {
+      console.error("生成 link 失败:", linkError)
+      return NextResponse.redirect(`${redirect}?error=创建会话失败`)
+    }
+
+    // 直接重定向到 magic link，完成登录
+    return NextResponse.redirect(linkData.properties.action_link)
   } catch (error) {
     console.error("微信登录处理失败:", error)
     return NextResponse.redirect(`${redirect}?error=登录处理失败`)

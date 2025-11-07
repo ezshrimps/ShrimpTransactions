@@ -67,13 +67,16 @@ export default function Home() {
 
   // 历史管理（只记录当前账单内的支出项操作）
   const history = useHistory()
-  const isHistoryAction = useRef(false) // 标记是否正在执行历史操作，避免触发新的历史记录
+  const isHistoryAction = useRef(false)
+  const isLoadingRef = useRef(false) // 标记是否正在执行历史操作，避免触发新的历史记录
 
   const currentConfig = configs?.find((c) => c.id === currentConfigId)
 
   // 抽取为可复用的加载函数
   const reloadBills = useCallback(async () => {
+    if (isLoadingRef.current) return
     try {
+      isLoadingRef.current = true
       setLoading(true)
       const bills = await fetchBills()
       const billsWithLists = bills.map((bill) => {
@@ -87,37 +90,14 @@ export default function Home() {
       console.error("Failed to load bills:", error)
     } finally {
       setLoading(false)
+      isLoadingRef.current = false
     }
-  }, [history])
+  }, [])
 
-  // 加载账单列表
+  // 首次加载
   useEffect(() => {
-    async function loadBills() {
-      try {
-        setLoading(true)
-        const bills = await fetchBills()
-        // 确保所有支出都有ID，并创建expenseList
-        const billsWithLists = bills.map((bill) => {
-          const expensesWithIds = addIdsToParsed(bill.expenses)
-          const expenseList = parsedToFlatList(expensesWithIds)
-          return {
-            ...bill,
-            expenses: expensesWithIds,
-            expenseList,
-          }
-        })
-        setConfigs(billsWithLists)
-        // 清空历史记录（切换账单时）
-        history.clearHistory()
-      } catch (error) {
-        console.error("Failed to load bills:", error)
-        alert("加载账单列表失败，请刷新页面重试")
-      } finally {
-        setLoading(false)
-      }
-    }
     reloadBills()
-  }, [reloadBills])
+  }, [])
 
   // 监听登录/登出事件自动刷新
   useEffect(() => {

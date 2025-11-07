@@ -4,8 +4,9 @@ import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { supabaseBrowser } from "@/lib/supabase-browser"
 
-// 禁用静态生成，强制动态渲染
+// 完全禁用静态生成和预渲染
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default function WeChatCallback() {
   const router = useRouter()
@@ -13,11 +14,15 @@ export default function WeChatCallback() {
   const [message, setMessage] = useState("正在处理微信登录...")
 
   useEffect(() => {
+    // 确保只在客户端运行
+    if (typeof window === 'undefined') return
+
     const handleCallback = async () => {
       try {
-        // 使用 window.location.search 而不是 useSearchParams，避免构建时错误
-        const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-        const userDataStr = params.get("user")
+        // 直接从 URL 获取参数，不使用任何 Next.js hooks
+        const urlParams = new URLSearchParams(window.location.search)
+        const userDataStr = urlParams.get("user")
+        
         if (!userDataStr) {
           setStatus("error")
           setMessage("缺少用户信息")
@@ -114,4 +119,3 @@ export default function WeChatCallback() {
     </div>
   )
 }
-

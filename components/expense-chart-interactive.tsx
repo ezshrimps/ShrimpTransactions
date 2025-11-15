@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from "react"
 import * as d3 from "d3"
 import type { ExpenseEntry, ParsedExpenses } from "@/app/page"
+import { useSettings } from "@/contexts/settings-context"
 
 interface ExpenseChartInteractiveProps {
   expenses: ParsedExpenses
@@ -55,9 +56,21 @@ export function ExpenseChartInteractive({
   onDeleteEntry,
   onCreateEntry,
 }: ExpenseChartInteractiveProps) {
+  const { settings } = useSettings()
   const svgRef = useRef<SVGSVGElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 })
+  
+  // 格式化货币
+  const formatCurrency = (amount: number) => `${settings.currencySymbol}${amount.toFixed(0)}`
+  const formatCurrencyDecimal = (amount: number) => `${settings.currencySymbol}${amount.toFixed(2)}`
+  
+  // 获取分类列表：合并设置中的分类和数据中存在的分类
+  const getCategories = () => {
+    const dataCategories = Object.keys(expenses)
+    const allCategories = [...new Set([...settings.categories, ...dataCategories])]
+    return allCategories
+  }
   const [draggedSegment, setDraggedSegment] = useState<SegmentData | null>(null)
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 })
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 }) // 鼠标当前位置（g坐标系）
@@ -118,7 +131,7 @@ export function ExpenseChartInteractive({
         const width = Math.max(maxWidth, 600) // 最小宽度600px
         
         // 根据数据计算合适的图表高度
-        const categories = Object.keys(expenses)
+        const categories = getCategories()
         const categoryCount = categories.length
         const maxTotal = Math.max(
           ...categories.map((cat) =>
@@ -183,8 +196,11 @@ export function ExpenseChartInteractive({
       .append("g")
       .attr("transform", `translate(${margin.left},${margin.top})`)
 
-    // 准备数据 - 使用会话类别列表（保留空类别）
-    const categories = sessionCategories.length > 0 ? sessionCategories : Object.keys(expenses)
+    // 准备数据 - 使用设置中的分类列表，合并数据中存在的分类
+    const allCategories = getCategories()
+    const categories = sessionCategories.length > 0 
+      ? [...new Set([...sessionCategories, ...allCategories])]
+      : allCategories
     const allEntries: Array<{ entry: ExpenseEntry; category: string; index: number }> = []
     categories.forEach((category) => {
       if (expenses[category]) {
@@ -535,7 +551,7 @@ export function ExpenseChartInteractive({
         .attr("font-weight", "600")
         .attr("pointer-events", "none")
         .style("text-shadow", "0 1px 2px rgba(255,255,255,0.8)")
-        .text((d) => `$${d.entry.amount.toFixed(0)}`)
+        .text((d) => formatCurrency(d.entry.amount))
     }
 
     // 拖拽功能
@@ -842,7 +858,7 @@ export function ExpenseChartInteractive({
     // Y轴 - 只在预览模式下显示价格
     if (displayMode === "preview") {
       // 线性金额刻度
-      const yAxis = (d3.axisLeft as any)(yScale).tickFormat((t: number) => `$${t}`)
+      const yAxis = (d3.axisLeft as any)(yScale).tickFormat((t: number) => formatCurrency(t))
       g.append("g")
         .attr("class", "y-axis")
         .call(yAxis)
@@ -876,7 +892,7 @@ export function ExpenseChartInteractive({
         .attr("fill", "#334155")
         .attr("font-size", "13px")
         .attr("font-weight", "700")
-        .text(`总金额 $${Math.round(totalAll)}`)
+        .text(`总金额 ${formatCurrency(totalAll)}`)
 
       // 预算虚线（每类）与顶部总额颜色（按使用率）
       const categoryStats = categories.map((category) => {
@@ -933,7 +949,7 @@ export function ExpenseChartInteractive({
         .attr("fill", (d: any) => getUtilColor(d.utilization, d.hasBudget))
         .attr("font-size", "12px")
         .attr("font-weight", "700")
-        .text((d) => `$${Math.round(d.totalAmount)}`)
+        .text((d) => formatCurrency(d.totalAmount))
 
       // 在 X 轴下方绘制预算数字，点击可编辑
       const budgetLabels = g.selectAll(".budget-label").data(categoryStats)
@@ -948,7 +964,7 @@ export function ExpenseChartInteractive({
         .attr("font-size", "11px")
         .attr("font-weight", "600")
         .style("cursor", "pointer")
-        .text((d) => (d.budget > 0 ? `$${d.budget}` : "设置预算"))
+        .text((d) => (d.budget > 0 ? formatCurrency(d.budget) : "设置预算"))
         .on("click", (event: any, d: any) => {
           const svgRect = svg.node()?.getBoundingClientRect()
           if (!svgRect) return
@@ -1001,7 +1017,10 @@ export function ExpenseChartInteractive({
     const height = dimensions.height - margin.top - margin.bottom
 
     // 使用会话类别列表（保留空类别）
-    const categories = sessionCategories.length > 0 ? sessionCategories : Object.keys(expenses)
+    const allCategories = getCategories()
+    const categories = sessionCategories.length > 0 
+      ? [...new Set([...sessionCategories, ...allCategories])]
+      : allCategories
     const xScale = (d3.scaleBand as any)()
       .domain(categories)
       .range([0, width])
@@ -1230,7 +1249,7 @@ export function ExpenseChartInteractive({
           }}
         >
           <div className="font-semibold mb-1 text-base">
-            ${hoveredSegment.entry.amount.toFixed(2)}
+            {formatCurrencyDecimal(hoveredSegment.entry.amount)}
           </div>
           {hoveredSegment.entry.description && (
             <div className="text-slate-300 text-xs mb-1">
@@ -1274,7 +1293,7 @@ export function ExpenseChartInteractive({
               className="w-full px-4 py-2 text-left text-sm text-red-600 dark:text-red-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
               onClick={() => {
                 if (onDeleteEntry && contextMenu) {
-                  if (confirm(`确定要删除这笔支出吗？\n金额：$${contextMenu.segment.entry.amount.toFixed(2)}${contextMenu.segment.entry.description ? `\n名称：${contextMenu.segment.entry.description}` : ""}`)) {
+                  if (confirm(`确定要删除这笔支出吗？\n金额：${formatCurrencyDecimal(contextMenu.segment.entry.amount)}${contextMenu.segment.entry.description ? `\n名称：${contextMenu.segment.entry.description}` : ""}`)) {
                     onDeleteEntry(contextMenu.segment.entry.id)
                     setContextMenu(null)
                   }

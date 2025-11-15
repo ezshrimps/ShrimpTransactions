@@ -23,6 +23,8 @@ import { useHistory } from "@/hooks/use-history"
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts"
 import { AuthBar } from "@/components/auth-bar"
 import { OnboardingTour } from "@/components/onboarding-tour"
+import { SettingsDialog } from "@/components/settings-dialog"
+import { Settings } from "lucide-react"
 
 export interface ExpenseEntry {
   id: string // 唯一标识符
@@ -62,9 +64,9 @@ export default function Home() {
   const [createExpenseCategory, setCreateExpenseCategory] = useState<string>("")
   const [editExpenseDialogOpen, setEditExpenseDialogOpen] = useState(false)
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null)
+const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
   const [editingExpenseDescription, setEditingExpenseDescription] = useState<string>("")
   const [editingExpenseAmount, setEditingExpenseAmount] = useState<number>(0)
-
   // 历史管理（只记录当前账单内的支出项操作）
   const history = useHistory()
   const isHistoryAction = useRef(false)
@@ -551,11 +553,21 @@ export default function Home() {
           </h1>
           <div className="flex items-center justify-between mt-2">
             <p className="text-sm md:text-base text-slate-600 dark:text-slate-400">
+<Button
+                variant="outline"
+                size="icon"
+                onClick={() => setSettingsDialogOpen(true)}
+                className="h-9 w-9"
+                title="设置"
+              >
+                <Settings className="h-4 w-4" />
+              </Button>
               用可视化图表管理您的每一笔支出
             </p>
-            <AuthBar />
-          </div>
-        </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4">
@@ -720,6 +732,7 @@ export default function Home() {
               }
             }}
             category={currentConfig?.expenses ? Object.entries(currentConfig.expenses).find(([_, entries]) => 
+<SettingsDialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
               entries.some(e => e.id === editingExpenseId)
             )?.[0] || "" : ""}
             initialDescription={editingExpenseDescription}

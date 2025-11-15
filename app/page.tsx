@@ -727,7 +727,6 @@ const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
                 setEditExpenseDialogOpen(true)
               }
             category={currentConfig?.expenses ? Object.entries(currentConfig.expenses).find(([_, entries]) => 
-<SettingsDialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
               entries.some(e => e.id === editingExpenseId)
             )?.[0] || "" : ""}
             initialDescription={editingExpenseDescription}

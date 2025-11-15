@@ -553,7 +553,10 @@ const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
           </h1>
           <div className="flex items-center justify-between mt-2">
             <p className="text-sm md:text-base text-slate-600 dark:text-slate-400">
-<Button
+              用可视化图表管理您的每一笔支出
+            </p>
+            <div className="flex items-center gap-2">
+              <Button
                 variant="outline"
                 size="icon"
                 onClick={() => setSettingsDialogOpen(true)}
@@ -562,15 +565,8 @@ const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
               >
                 <Settings className="h-4 w-4" />
               </Button>
-              用可视化图表管理您的每一笔支出
-            </p>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-
-        {/* Main Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-3 md:gap-4">
+              <AuthBar />
+            </div>
           {/* Left Column - Bill List */}
           <div className="lg:col-span-1 space-y-3 md:space-y-4">
             <Card className="p-3 md:p-4">
@@ -730,14 +726,12 @@ const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
               } else {
                 setEditExpenseDialogOpen(true)
               }
-            }}
             category={currentConfig?.expenses ? Object.entries(currentConfig.expenses).find(([_, entries]) => 
 <SettingsDialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
               entries.some(e => e.id === editingExpenseId)
             )?.[0] || "" : ""}
             initialDescription={editingExpenseDescription}
             initialAmount={editingExpenseAmount}
-            onEdit={(description, amount) => {
               handleConfirmEditEntry(editingExpenseId, description, amount)
               setEditExpenseDialogOpen(false)
               setEditingExpenseId(null)
@@ -745,6 +739,7 @@ const [settingsDialogOpen, setSettingsDialogOpen] = useState(false)
           />
         )}
         <OnboardingTour />
+        <SettingsDialog open={settingsDialogOpen} onOpenChange={setSettingsDialogOpen} />
       </div>
     </main>
   )
